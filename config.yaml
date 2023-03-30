@@ -1,0 +1,35 @@
+metric:
+  images: 1_images
+  predictions: 3_predictions
+  targets: 2_targets
+  names:
+    target: target_
+    image: image_
+    prediction: predict_
+  endings:
+    target: .txt
+    image: .png
+    prediction: .txt
+label_size:
+  x: 240
+  y: 160
+image:
+  width: 1920
+  height: 1280
+stixel:
+  width: 8
+  height: 10
+dataset:
+  raw_data_base_folder: /media/marcel/Data1/
+  output_data_base_folder: data
+  set_name: waymo-od
+  dataset_paths:
+    val: dataset_validation
+    test: dataset_testing
+    train: dataset_training
+  raw_path:
+    val: validation
+    test: testing
+    train: training
+investigation:
+  filename: individual_files_training_segment-10072140764565668044_4060_000_4080_000_with_camera_labels.tfrecord

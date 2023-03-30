@@ -1,0 +1,6 @@
+tensorflow==2.6.0
+numpy>=1.19.5
+matplotlib
+opencv-python
+Pillow
+waymo-open-dataset-tf-2-6-0>=1.4.9

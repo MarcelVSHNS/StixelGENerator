@@ -18,57 +18,37 @@ def rgba(r, r_max=50):
     c[-1] = 0.7  # alpha
     return c
 
-
-def plot_image(camera_image):
-    """Plot a camera image."""
-    minor_ticks = np.arange(0, 1921, 8)
+def plot_image(img):
     fig = plt.figure(figsize=(20, 12))
     # if True; print horizontal cols on img
-    if False:
-        ax = fig.add_subplot(1, 1, 1)
-        ax.set_xticks(minor_ticks)
-        plt.grid(axis='x')
-    else:
-        plt.grid(False)
-    plt.imshow(tf.image.decode_jpeg(camera_image.image))
+
+    plt.imshow(img)
 
 
-def plot_points_on_image(projected_points, camera_image, rgba_func, point_size=15.0, objects=[], with_range=True):
-    """Plots points on a camera image.
-      Args:
-        projected_points: [N, 3] numpy array. The inner dims are
-          [camera_x, camera_y, range].
-        camera_image: jpeg encoded camera image.
-        rgba_func: a function that generates a color from a range value.
-        objects: ...
-        point_size: the point size.
-    """
-    plot_image(camera_image)
+def plot_points_on_image(frame, view=0):
+    plt.figure(figsize=(20, 12))
+    plt.imshow(frame.images[view])
+
+    points_view_norm = np.linalg.norm(frame.laser_points[view], axis=-1, keepdims=True)
+    points = np.concatenate([frame.laser_camera_projections[view][..., 1:3], points_view_norm], axis=-1)
 
     xs = []
     ys = []
     colors = []
-
-    if with_range:
-        for point in projected_points:
-            xs.append(point[0])  # width, col
-            ys.append(point[1])  # height, row
-            colors.append(rgba_func(point[2]))
-        plt.scatter(xs, ys, c=colors, s=point_size, edgecolors="none")
-    else:
-        for point in projected_points:
-            xs.append(point[0])  # width, col
-            ys.append(point[1])  # height, row
-        plt.scatter(xs, ys, c='r', s=point_size * 2, edgecolors="none")
-
+    for point in points:
+        xs.append(point[0])  # width, col
+        ys.append(point[1])  # height, row
+        colors.append(rgba(point[2]))
+    plt.scatter(xs, ys, c=colors, s=15.0, edgecolors="none")
+    """
     xo = []
     yo = []
-
     if len(objects) != 0:
         for point in objects:
             xo.append(point[0])  # width, col
             yo.append(point[1])  # height, row
         plt.scatter(xo, yo, c='r', s=point_size * 2, edgecolors="none")
+    """
     plt.show()
 
 

@@ -10,64 +10,61 @@ from waymo_open_dataset.utils import frame_utils
 from PIL import Image
 
 
-class WaymoDataLoader(object):
-    def __init__(self, data_dir, tfrecord_file=None, camera_segmentation_only=False, shuffle=False):
+class WaymoDataLoader:
+    def __init__(self, data_dir, camera_segmentation_only=False):
         """
         Loads a full set of waymo data in single frames, can be one tf_record file or a folder of  tf_record files.
         Args:
             data_dir: specify the location of the tf_records
-            tf_record_file: pick a specific file from data_dir
             camera_segmentation_only: if True, loads only frames with available camera segmentation
-            shuffle: if True, the frames will be shuffled
         """
         self.data_dir = data_dir
         self.camera_segmentation_only = camera_segmentation_only
-        self.frames = []
-        if tfrecord_file:
-            self.tfrecord_file = os.path.join(data_dir, tfrecord_file)
-            assert self.tfrecord_file.endswith('.tfrecord')
-            self.unpack_single_tfrecord_file_from_path(self.tfrecord_file)
-        else:
-            self.tfrecord_file = data_dir
-            self.load_data_from_folder()
-        if shuffle:
-            random.shuffle(self.frames)
-        print(f"Num_frames: {len(self.frames)}")
+        # find files in folder (data_dir) which fit to pattern endswith-'.tfrecord'
+        self.tfrecord_map = glob.glob(os.path.join(self.data_dir, '*.tfrecord'))
+        print(f"Found {len(self.tfrecord_map)} record files")
 
-    def load_data_from_folder(self):
-        data_folder = os.path.join(self.data_dir, '*.tfrecord')
-        dataset_list = glob.glob(data_folder)
-        print(f"Found {len(dataset_list)} record files")
-        for dataset_name in dataset_list:
-            # unpack every used frame from set and store in frame list
-            self.unpack_single_tfrecord_file_from_path(dataset_name)
+    def __getitem__(self, idx):
+        frames = self.unpack_single_tfrecord_file_from_path(self.tfrecord_map[idx])
+        waymo_data_chunk = []
+        for tf_frame in frames:
+            waymo_data_chunk.append(WaymoData(tf_frame, camera_segmentation_only=self.camera_segmentation_only))
+        return waymo_data_chunk
+
+    def __len__(self):
+        return len(self.tfrecord_map)
 
     def unpack_single_tfrecord_file_from_path(self, tf_record_filename):
         """ Loads a tf-record file from the given path and returns a list of frames from the file """
         dataset = tf.data.TFRecordDataset(tf_record_filename, compression_type='')
+        frame_list = []
         for data in dataset:
             frame = open_dataset.Frame()
             frame.ParseFromString(bytearray(data.numpy()))
             if self.camera_segmentation_only:
                 if frame.images[0].camera_segmentation_label.panoptic_label:
-                    self.frames.append(WaymoData(frame))
+                    frame_list.append(frame)
             else:
-                self.frames.append(WaymoData(frame))
-            # if self.laser_segmentation_only:
-                # if frame.lasers[0].ri_return1.segmentation_label_compressed:
-                #    frame_list.append(frame)
+                frame_list.append(frame)
+        return frame_list
 
 
-class WaymoData(object):
+class WaymoData:
     def __init__(self, tf_frame, camera_segmentation_only=False):
+        """
+        Base class for data from waymo open dataset
+        Args:
+            tf_frame:
+            camera_segmentation_only:
+        """
         # Base declaration
         self.images = []
         self.laser_points = []
         self.laser_camera_projections = []
         self.camera_segmentation_only = camera_segmentation_only
         # Transformations
-        self.top_lidar_points_slices(tf_frame)      # Apply laser transformation
-        self.convert_images_to_pil(tf_frame.images)                # Apply image transformation
+        self.top_lidar_points_slices(tf_frame)  # Apply laser transformation
+        self.convert_images_to_pil(tf_frame.images)  # Apply image transformation
         # TODO: Future Add-On
         if self.camera_segmentation_only:
             self.camera_labels, self.camera_instance_labels = None, None
@@ -99,7 +96,8 @@ class WaymoData(object):
             mask = tf.equal(laser_projection_points[..., 0], images[view].name)
             # transform points after slicing it from the mask into float values
             self.laser_points.append(tf.gather_nd(laser_points, tf.where(mask)).numpy())
-            self.laser_camera_projections.append(tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy())
+            self.laser_camera_projections.append(
+                tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy())
 
     def convert_images_to_pil(self, frame_images):
         images = sorted(frame_images, key=lambda i: i.name)

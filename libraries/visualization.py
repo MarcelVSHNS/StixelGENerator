@@ -16,13 +16,12 @@ def rgba(r, r_max=50):
     return c
 
 
-def plot_points_on_image(images, laser_points, laser_camera_projections, view=0):
+def plot_points_on_image(images, laser_points, view=0):
     plt.figure(figsize=(20, 12))
     plt.imshow(images[view])
 
-    points_view_norm = np.linalg.norm(laser_points[view], axis=-1, keepdims=True)
-    points = np.concatenate([laser_camera_projections[view][..., 1:3], points_view_norm], axis=-1)
-
+    points_view_norm = np.linalg.norm(laser_points[view][..., :3], axis=-1, keepdims=True)
+    points = np.concatenate([laser_points[view][..., 3:5], points_view_norm], axis=-1)
     xs = []
     ys = []
     colors = []

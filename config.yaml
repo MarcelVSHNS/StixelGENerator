@@ -5,4 +5,5 @@ data_path: data/
 raw_data_path: raw/
 # /media/marcel/Data1/
 explore_data: True
+explore_data_deep: False
 

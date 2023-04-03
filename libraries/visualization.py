@@ -16,12 +16,12 @@ def rgba(r, r_max=50):
     return c
 
 
-def plot_points_on_image(images, laser_points, view=0):
+def plot_points_on_image(images, laser_points):
     plt.figure(figsize=(20, 12))
-    plt.imshow(images[view])
+    plt.imshow(images)
 
-    points_view_norm = np.linalg.norm(laser_points[view][..., :3], axis=-1, keepdims=True)
-    points = np.concatenate([laser_points[view][..., 3:5], points_view_norm], axis=-1)
+    points_view_norm = np.linalg.norm(laser_points[..., :3], axis=-1, keepdims=True)
+    points = np.concatenate([laser_points[..., 3:5], points_view_norm], axis=-1)
     xs = []
     ys = []
     colors = []
@@ -39,4 +39,13 @@ def plot_points_on_image(images, laser_points, view=0):
             yo.append(point[1])  # height, row
         plt.scatter(xo, yo, c='r', s=point_size * 2, edgecolors="none")
     """
+    plt.show()
+
+
+def plot_angle_distribution(points_per_angle):
+    fig = plt.figure()
+    plt.title(len(points_per_angle))
+    ax = fig.add_axes([0, 0, 1, 1])
+    angle = range(len(points_per_angle))
+    ax.bar(angle, points_per_angle)
     plt.show()

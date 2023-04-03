@@ -1,4 +1,12 @@
 import numpy as np
+import pandas as pd
+import yaml
+
+from libraries.visualization import plot_angle_distribution
+
+
+with open('config.yaml') as yamlfile:
+    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 
 
 def get_stixel_from_laser_data(laser_points_by_view):
@@ -11,12 +19,15 @@ def get_stixel_from_laser_data(laser_points_by_view):
     laser_stixel = []
     # calculate over all views
     for view_laser_points in laser_points_by_view:
-        laser_points_by_angle = __order_points_by_angle(view_laser_points)
+        # 1. laser_points_by_angle
+        laser_stixel.append(__order_points_by_angle(view_laser_points))
         gradient_cuts = []
         # calculate over all columns
+        """
         for angle_points in laser_points_by_angle:
             gradient_cuts.append(__extract_object_cuts_from_an_angle(angle_points))
         laser_stixel.append(gradient_cuts)
+        """
     return laser_stixel
 
 
@@ -27,9 +38,39 @@ def __order_points_by_angle(laser_points):
         laser_points: A list of laser points with cartesian coordinates + their projection to the related image [..., [x,y,z, img_x, img_y]]
     Returns: a list where every entry is a list of points ([..., [x,y,z, img_x, img_y]]) of the same angle
     """
-    return []
+    # 1. Convert points to spherical coordinates
+    laser_points.tolist()
+    for cart_pt in laser_points:
+        cart_pt[:3] = __cart2sph(cart_pt[:3])
+        # 2. flatten azimuth to reduce the amount of possible angles (now ca. 900 @waymo)
+        # TODO: better angle smoothing, maybe discard double
+        cart_pt[1] = round(cart_pt[1], 3)
+    # sort the list by angle (azimuth)
+    laser_points = sorted(laser_points, key=lambda x: x[1])
+    # 3. append all pts to the corresponding angle (divide the big list into lists with the same angle)
+    laser_points_by_angle = []
+    current_angle = None
+    for pts in laser_points:
+        if pts[1] != current_angle:
+            current_angle = pts[1]
+            laser_points_by_angle.append([pts])
+        else:
+            laser_points_by_angle[-1].append(pts)
+    # Draw a histrogram of the point per angle distribution
+    if config['explore_data_deep']:
+        points_per_angle = []
+        for lst in laser_points_by_angle:
+            points_per_angle.append(len(lst))
+        plot_angle_distribution(points_per_angle)
+    # 4. Calculate back to cartesian coordinates and convert to numpy
+    laser_points_angle_listed = []
+    for angle_lst in laser_points_by_angle:
+        for sph_pt in angle_lst:
+            sph_pt[:3] = __sph2cart(sph_pt[:3])
+        laser_points_angle_listed.append(np.array(angle_lst))
+    return laser_points_angle_listed
 
-def
+
 
 
 def __extract_object_cuts_from_an_angle(points_by_angle, research_active=False):
@@ -89,42 +130,11 @@ def __extract_object_cuts_from_an_angle(points_by_angle, research_active=False):
         return np.array([])
 
 
-def __transform_spherical_to_cartesian(pts_sph):
-    """
-    Generates an array of spherical coordinates.
-    Args:
-        pts_sph: Array of cartesian coordinates in form of [N,(x,y,z)].
-    Returns: An array in shape of pts_cart in spherical coordinates with inner dims: radius, azimuth, elevation in rad.
-    """
-    pts_cart = np.zeros(pts_sph.shape)
-    for i in range(len(pts_cart)):
-        r = pts_sph[i][0]
-        az = pts_sph[i][1]
-        el = pts_sph[i][2]
-        pts_cart[i] = __sph2cart(r, az, el)
-    return pts_cart
-
-
-def __transform_cartesian_to_spherical(pts_cart):
-    """
-    Generates an array of spherical coordinates.
-    Args:
-        pts_cart: Array of cartesian coordinates in form of [N,(x,y,z)].
-    Returns: An array in shape of pts_cart in spherical coordinates with inner dims: radius, azimuth, elevation in rad.
-    """
-    pts_sph = np.zeros(pts_cart.shape)
-    for i in range(len(pts_cart)):
-        x = pts_cart[i][0]
-        y = pts_cart[i][1]
-        z = pts_cart[i][2]
-        pts_sph[i] = __cart2sph(x, y, z)
-    return pts_sph
-
-
-def __sph2cart(r, az, el):
+def __sph2cart(sph_coord):
     """calculation of spherical coordinates into cartesian coordinates .
         Returns: three values in form [x, y, z]
     """
+    r, az, el = sph_coord
     r_cos_theta = r * np.cos(el)
     x = r_cos_theta * np.cos(az)
     y = r_cos_theta * np.sin(az)
@@ -132,10 +142,13 @@ def __sph2cart(r, az, el):
     return x, y, z
 
 
-def __cart2sph(x, y, z):
-    """calculation of cartesian coordinates into spherical coordinates .
-        Returns: three values in form [r, az, el]
+def __cart2sph(cart_coord):
+    """calculation of cartesian coordinates into spherical coordinates.
+    Args:
+        cart_coord: three values in shape [x, y, z]
+    Returns: three values in shape [r, az, el]
     """
+    x, y, z = cart_coord
     hxy = np.hypot(x, y)
     r = np.hypot(hxy, z)
     el = np.arctan2(z, hxy)

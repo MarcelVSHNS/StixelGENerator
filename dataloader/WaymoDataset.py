@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import glob
+import open3d as o3d
 from datetime import datetime
 
 from waymo_open_dataset import dataset_pb2 as open_dataset
@@ -83,6 +84,7 @@ class WaymoData:
         self.images = []
         self.laser_points = []
         self.camera_segmentation_only = camera_segmentation_only
+        self.name = tf_frame.context.name
         # Transformations
         self.top_lidar_points_slices(tf_frame)  # Apply laser transformation
         self.convert_images_to_pil(tf_frame.images)  # Apply image transformation

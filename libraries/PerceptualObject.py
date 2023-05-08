@@ -4,7 +4,6 @@ import numpy as np
 
 grid = 8
 
-
 def force_value_into_grid(value, grid_size=grid):
     rest = value % grid_size
     if rest >= grid / 2:
@@ -43,7 +42,21 @@ def mean_double_row_values(depth_vals):
 
 
 class PerceptualObject(object):
+    def __init__(self, points):
+        self.points = points
+
+
+
+class ObjectColumn(object):
     def __init__(self, col=0, start=0, end=0, obj_pts=None):
+        """
+        Analyses one col of a given object cluster
+        Args:
+            col:
+            start:
+            end:
+            obj_pts:
+        """
         self.col = col
         self.starting_row = force_value_into_grid(start)   # from top to bottom
         self.ending_row = force_value_into_grid(end)       # lower than starting

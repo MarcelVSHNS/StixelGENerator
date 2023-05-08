@@ -496,7 +496,10 @@ class WaymoData(object):
             perceptual_object_list = []
             for i in range(len(segmented_objects)):
                 perceptual_object_list.append(
-                    PerceptualObject.PerceptualObject(segmented_objects[i][0], segmented_objects[i][1], segmented_objects[i][2], laser_pts_of_objects[i]))
+                    PerceptualObject.ObjectColumn(segmented_objects[i][0],
+                                                  segmented_objects[i][1],
+                                                  segmented_objects[i][2],
+                                                  laser_pts_of_objects[i]))
             # Remove objects of width 0
             for obj in perceptual_object_list:
                 if obj.ending_row == obj.starting_row:

@@ -17,7 +17,7 @@ stixelWidth = config['stixel']['width']
 stixelHeight = config['stixel']['height']
 path = "dataset_validation"
 thickness = 1
-idx_list = [45, 2698, 447, 90]
+idx_list = [1,2,3]
 image_list = [f for f in os.listdir(path) if f.endswith('.png')]
 
 for idx in idx_list:

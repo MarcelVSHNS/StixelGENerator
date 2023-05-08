@@ -2,8 +2,18 @@ phase: training
 # testing
 # validation
 data_path: data/
-raw_data_path: raw/
+targets: targets
+raw_data_path: /media/marcel/Data1/
 # /media/marcel/Data1/
+# raw/
 explore_data: True
+exploring:
+  view: 0
+  idx: 0
+  frame_num: -1
+  col: 249
 explore_data_deep: False
+num_views: 3
+num_threads: 6
+
 

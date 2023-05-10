@@ -1,6 +1,7 @@
 import numpy as np
 import open3d as o3d
 import yaml
+import random
 
 from dataloader.WaymoDataset import WaymoDataLoader
 from libraries.visualization import plot_points_on_image
@@ -26,7 +27,10 @@ def main():
     waymo_dataset = WaymoDataLoader(data_dir=data_dir, camera_segmentation_only=False, first_only=True)
 
     # Example to display the lidar camera projection and provide an exploring data sample
-    idx = config['exploring']['idx']
+    if config['exploring']['random_idx']:
+        idx = random.randint(0, len(waymo_dataset))
+    else:
+        idx = config['exploring']['idx']
     frame_num = config['exploring']['frame_num']
     view = config['exploring']['view']
     col = config['exploring']['col']
@@ -38,38 +42,36 @@ def main():
     # Show the Objects by point cloud
     # detect_objects_in_point_cloud_numerical(sample.laser_points[view][..., :3], visualize=True)
 
-    # Show the view with points
-    if config['explore_data_deep']:
-        # usage of the visualization lib
-        for i in range(1):
-            plot_points_on_image(images=sample.images[i],
-                                 laser_points=sample.laser_points[i])
-
     # Basic concept is to load general data like waymo and apply the library functions to the provided data
     # Get Stixel from Laser
     # Get Laser points sorted by angle
     laser_stixel, laser_by_angle = get_stixel_from_laser_data(laser_points_by_view=sample.laser_points[:config['num_views']])
 
-    # Draw Stixel on image
-    if config['explore_data']:
-        stixels, _reasons = analyse_lidar_col_for_stixel(laser_by_angle[view][col], investigate=True)
-        plot_points_on_image(images=sample.images[view],
-                             laser_points=sample.laser_points[view])
-        plot_points_on_image(images=sample.images[view],
-                             laser_points=laser_by_angle[view][col],
-                             stixels=stixels,
-                             reasons=_reasons)
-        plot_points_2d_graph(laser_points_by_angle=laser_by_angle[view][col],
-                             stixels=stixels,
-                             reasons=_reasons,
-                             title=str(col))
+    # Search for Stixel on image
+    stixels, _reasons = analyse_lidar_col_for_stixel(laser_by_angle[view][col], investigate=True)
+    # Full Point Cloud
+    plot_points_on_image(images=sample.images[view],
+                         laser_points=sample.laser_points[view],
+                         title=f"Idx = {idx}, Frame: {frame_num}, View: {view}")
+    # One angle with stixel
+    plot_points_on_image(images=sample.images[view],
+                         laser_points=laser_by_angle[view][col],
+                         stixels=stixels,
+                         reasons=_reasons,
+                         title=f"Idx = {idx}, Frame: {frame_num}, View: {view}, Col: {col}")
+    # One angle 2D Plot with stixel
+    plot_points_2d_graph(laser_points_by_angle=laser_by_angle[view][col],
+                         stixels=stixels,
+                         reasons=_reasons,
+                         title=f"Idx = {idx}, Frame: {frame_num}, View: {view}, Col: {col}")
+    # Training data visual
+    training_data = force_stixel_into_image_grid(laser_stixel)
+    plot_points_on_image(images=sample.images[view],
+                         laser_points=training_data[view],
+                         title=f"Idx = {idx}, Frame: {frame_num}, View: {view}")
 
-        training_data = force_stixel_into_image_grid(laser_stixel)
-        plot_points_on_image(images=sample.images[view],
-                             laser_points=training_data[view])
-
-        # Show the Objects by point cloud
-        # detect_objects_in_point_cloud_numerical(training_data[view][..., :3], visualize=True)
+    # Show the Objects by point cloud
+    # detect_objects_in_point_cloud_numerical(training_data[view][..., :3], visualize=True)
 
 
 if __name__ == "__main__":

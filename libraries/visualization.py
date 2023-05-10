@@ -18,7 +18,7 @@ def rgba(r, r_max=50):
     return c
 
 
-def plot_points_on_image(images, laser_points, stixels=None, reasons=None):
+def plot_points_on_image(images, laser_points, stixels=None, reasons=None, title="Points X"):
     plt.figure(figsize=(20, 12))
     plt.imshow(images)
 
@@ -51,16 +51,7 @@ def plot_points_on_image(images, laser_points, stixels=None, reasons=None):
                 z_stixel.append(stixel[3])
                 z_stixel_y.append(stixel[4])
         plt.scatter(z_stixel, z_stixel_y, c='#ff0000', s=18.0)
-
-    """
-    xo = []
-    yo = []
-    if len(objects) != 0:
-        for point in objects:
-            xo.append(point[0])  # width, col
-            yo.append(point[1])  # height, row
-        plt.scatter(xo, yo, c='r', s=point_size * 2, edgecolors="none")
-    """
+    plt.title(title)
     plt.show()
 
 

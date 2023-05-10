@@ -9,6 +9,7 @@ raw_data_path: /media/marcel/Data1/
 explore_data: True
 exploring:
   view: 0
+  random_idx: True
   idx: 0
   frame_num: -1
   col: 180

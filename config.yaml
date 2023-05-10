@@ -1,4 +1,4 @@
-phase: training
+phase: testing
 # testing
 # validation
 data_path: data/
@@ -11,9 +11,11 @@ exploring:
   view: 0
   idx: 0
   frame_num: -1
-  col: 249
+  col: 180
 explore_data_deep: False
 num_views: 3
-num_threads: 6
-
-
+num_threads: 1
+dataset_name: waymo-od-lidar
+num_zips_training: 16
+num_zips_validation: 4
+num_zips_testing: 3

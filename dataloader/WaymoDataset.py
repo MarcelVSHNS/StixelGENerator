@@ -64,11 +64,11 @@ class WaymoDataLoader:
                 if frame.images[0].camera_segmentation_label.panoptic_label:
                     frame_list.append(frame)
             else:
-                if frame_num % 10 == 0:
+                if frame_num % 50 == 0:
                     frame = open_dataset.Frame()
                     frame.ParseFromString(bytearray(data.numpy()))
                     frame_list.append(frame)
-            frame_num += 1
+                frame_num += 1
         return frame_list
 
 

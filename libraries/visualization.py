@@ -18,7 +18,7 @@ def rgba(r, r_max=50):
     return c
 
 
-def plot_points_on_image(images, laser_points, stixels=None):
+def plot_points_on_image(images, laser_points, stixels=None, reasons=None):
     plt.figure(figsize=(20, 12))
     plt.imshow(images)
 
@@ -37,15 +37,21 @@ def plot_points_on_image(images, laser_points, stixels=None):
         z_stixel_y = []
         r_stixel = []
         r_stixel_y = []
-        for stixel in stixels:
-            if stixel[5] == 1:
+        if reasons is not None:
+            for stixel, reason in zip(stixels, reasons):
+                if reason == 1:
+                    z_stixel.append(stixel[3])
+                    z_stixel_y.append(stixel[4])
+                if reason == 2:
+                    r_stixel.append(stixel[3])
+                    r_stixel_y.append(stixel[4])
+            plt.scatter(r_stixel, r_stixel_y, c='#00ff00', s=18.0)
+        else:
+            for stixel in stixels:
                 z_stixel.append(stixel[3])
                 z_stixel_y.append(stixel[4])
-            if stixel[5] == 2:
-                r_stixel.append(stixel[3])
-                r_stixel_y.append(stixel[4])
         plt.scatter(z_stixel, z_stixel_y, c='#ff0000', s=18.0)
-        plt.scatter(r_stixel, r_stixel_y, c='#00ff00', s=18.0)
+
     """
     xo = []
     yo = []
@@ -58,7 +64,7 @@ def plot_points_on_image(images, laser_points, stixels=None):
     plt.show()
 
 
-def plot_points_2d_graph(laser_points_by_angle, stixels=None, title="Angle X"):
+def plot_points_2d_graph(laser_points_by_angle, stixels=None, reasons=None, title="Angle X"):
     """
     Plot a 2D Graph of a single angle of the LiDAR
     Args:
@@ -96,15 +102,21 @@ def plot_points_2d_graph(laser_points_by_angle, stixels=None, title="Angle X"):
         z_stixel_y = []
         r_stixel = []
         r_stixel_y = []
-        for stixel in stixels:
-            if stixel[5] == 1:
-                z_stixel.append(math.sqrt(math.pow(stixel[0], 2) + math.pow(stixel[1], 2)))
-                z_stixel_y.append(stixel[2])
-            if stixel[5] == 2:
-                r_stixel.append(math.sqrt(math.pow(stixel[0], 2) + math.pow(stixel[1], 2)))
-                r_stixel_y.append(stixel[2])
+        if reasons is not None:
+            for stixel, reason in zip(stixels, reasons):
+                if reason == 1:
+                    z_stixel.append(math.sqrt(math.pow(stixel[0], 2) + math.pow(stixel[1], 2)))
+                    z_stixel_y.append(stixel[2])
+                if reason == 2:
+                    r_stixel.append(math.sqrt(math.pow(stixel[0], 2) + math.pow(stixel[1], 2)))
+                    r_stixel_y.append(stixel[2])
+            plt.plot(r_stixel, r_stixel_y, 'yo', markersize=3)
+        else:
+            for stixel in stixels:
+                z_stixel.append(stixel[3])
+                z_stixel_y.append(stixel[4])
         plt.plot(z_stixel, z_stixel_y, 'ro', markersize=2)
-        plt.plot(r_stixel, r_stixel_y, 'yo', markersize=3)
+
     for x, y, g in zip(rs, zs, m):
         label = "{:.3f}".format(g)
         plt.annotate(label,  # this is the text

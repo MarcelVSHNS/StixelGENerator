@@ -4,6 +4,7 @@ import yaml
 import open3d as o3d
 import math
 from matplotlib.pyplot import get_cmap
+from decimal import *
 
 from libraries.visualization import plot_angle_distribution
 
@@ -54,15 +55,18 @@ def __order_points_by_angle(laser_points, img_width=1920, col_width=8):
     for cart_pt in laser_points:
         cart_pt[:3] = (__cart2sph(cart_pt[:3]))
     sph_np = np.asarray(laser_points)
-    max_az = np.amax(sph_np[..., [1]])
-    min_az = np.amin(sph_np[..., [1]])
+    # max_az = np.amax(sph_np[..., [1]])
+    # min_az = np.amin(sph_np[..., [1]])
     # determine FoV
-    fov = abs(max_az - min_az)
+    # fov = abs(max_az - min_az)
     # determine angle width
-    grid_step = fov / (img_width / col_width * 2)
+    # Waymo LiDAR characteristics: VFoV: 64 shots, HVoV: 2650 steps, depth 4 (range elonga, ...)
+    # grid_step = fov / (img_width / col_width * 2)
+    laser_steps = 2650 - 1
+    angle_step = 2 * math.pi / laser_steps
     # force azimuth into grid
     for cart_pt in laser_points:
-        cart_pt[1] = cart_pt[1] - (cart_pt[1] % grid_step)
+        cart_pt[1] = force_angle_to_grid(cart_pt[1], angle_step)
         # cart_pt[1] = round(cart_pt[1], 3)
     # sort the list by angle (azimuth)
     laser_points = sorted(laser_points, key=lambda x: x[1])
@@ -87,7 +91,22 @@ def __order_points_by_angle(laser_points, img_width=1920, col_width=8):
         for sph_pt in angle_lst:
             sph_pt[:3] = __sph2cart(sph_pt[:3])
         laser_points_angle_listed.append(np.array(angle_lst))
+    print(f"Num Angles: {len(laser_points_angle_listed)}")
     return laser_points_angle_listed
+
+
+def force_angle_to_grid(angle, step):
+    angle_norm = 0
+    angle = Decimal(str(round(float(angle), 6)))
+    step = Decimal(str(round(float(step), 6)))
+    rest = angle % step
+    if rest > step / 2:
+        angle_norm = angle + (step - rest)
+    else:
+        angle_norm = angle - rest
+    test = angle_norm % step
+    assert angle_norm % step == 0
+    return angle_norm
 
 
 def __sph2cart(sph_coord):
@@ -150,14 +169,15 @@ def detect_objects_in_point_cloud_numerical(point_cloud, visualize=False):
         """
 
 
-def analyse_lidar_col_for_stixel(laser_points_by_angle, threshold_z=0.125, threshold_r=0.008, threshold_jump=0.4,
-                                 threshold_distance=50.0, investigate=False):
+def analyse_lidar_col_for_stixel(laser_points_by_angle, threshold_z_slope=0.125, threshold_z_abs=0.01, threshold_r=0.008, threshold_jump=0.4,
+                                 threshold_distance=75.0, investigate=False):
     """
     A function which is simply calculating the slope between each poit pair and applying thresholds to filter for stixel
     Args:
+        threshold_z_abs:
         investigate: adds additional prints
         laser_points_by_angle: Expected shape is [..., [x,y,z, img_x, img_y]
-        threshold_z: means the detection of an object (z-axle)
+        threshold_z_slope: means the detection of an object (z-axle)
         threshold_r: means the detection of a gap (radius)
         threshold_jump: means, the additional radius to delete in case of a back step
         threshold_distance: limits the maximum detectable stixel in m
@@ -169,6 +189,7 @@ def analyse_lidar_col_for_stixel(laser_points_by_angle, threshold_z=0.125, thres
     zs_level = []   # TODO: use laser_points_.. directly
     m = []          # list of slopes from point to point
     delta_r = []    # list of radius differences between points
+    delta_z = []
 
     laser_points_by_angle = np.flip(laser_points_by_angle, axis=0)
     for point in laser_points_by_angle:
@@ -182,13 +203,18 @@ def analyse_lidar_col_for_stixel(laser_points_by_angle, threshold_z=0.125, thres
     # by fist appending a zero, the following point is selected if it hits the threshold
     init_x = xs_radius[0]
     init_y = zs_level[0]
-    m.append(init_y / init_x)
+    delta_z.append(0.0)
+    if init_x != 0:
+        m.append(init_y / init_x)
+    else:
+        m.append(0.0)
     for i in range(len(xs_radius) - 1):
         # Slope
         delta_x = xs_radius[i + 1] - xs_radius[i]
         if delta_x == 0:
             delta_x = 0.001
         delta_y = zs_level[i + 1] - zs_level[i]
+        delta_z.append(delta_y)
         assert delta_x != 0, f"divided by 0"
         m.append(delta_y / delta_x)
         # Viewing gap
@@ -200,12 +226,12 @@ def analyse_lidar_col_for_stixel(laser_points_by_angle, threshold_z=0.125, thres
         print("No. \t r \t m")
     for i in range(len(xs_radius)):
         if investigate:
-            print(f"{i}. {xs_radius[i]} - {m[i]}")
+            print(f"{i}. {xs_radius[i]} - {m[i]} - {delta_z[i]}")
 
         # limits the sensor distance
         if xs_radius[i] <= threshold_distance:
             # Evaluates the slope
-            if abs(m[i]) >= threshold_z:
+            if abs(m[i]) >= threshold_z_slope and delta_z[i] >= threshold_z_abs:
                 # delete the points before the new one - threshold
                 if m[i] <= 0:
                     # keeps all points which are smaller than the current r - threshold

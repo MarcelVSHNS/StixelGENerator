@@ -59,6 +59,7 @@ def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
                                       stixels=training_data[camera_view],
                                       name=f"{frame.name}-{frame_num}-{camera_view}")
             frame_num += 5
+        print(f"TFRecord-file with idx {index} finished with {frame_num/5} frames")
 
 
 def export_single_dataset(image, stixels, name):

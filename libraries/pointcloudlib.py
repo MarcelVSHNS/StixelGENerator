@@ -91,7 +91,6 @@ def __order_points_by_angle(laser_points, img_width=1920, col_width=8):
         for sph_pt in angle_lst:
             sph_pt[:3] = __sph2cart(sph_pt[:3])
         laser_points_angle_listed.append(np.array(angle_lst))
-    print(f"Num Angles: {len(laser_points_angle_listed)}")
     return laser_points_angle_listed
 
 

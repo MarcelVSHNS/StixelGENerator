@@ -1,4 +1,4 @@
-phase: testing
+phase: validation
 # testing
 # validation
 data_path: data/

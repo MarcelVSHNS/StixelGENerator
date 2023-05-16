@@ -36,10 +36,9 @@ class WaymoDataLoader:
         frames = self.unpack_single_tfrecord_file_from_path(self.tfrecord_map[idx])
         waymo_data_chunk = []
         for tf_frame in frames:
-            start_time = datetime.now()
+            # start_time = datetime.now()
             waymo_data_chunk.append(WaymoData(tf_frame, camera_segmentation_only=self.camera_segmentation_only))
-            time_elapsed = datetime.now() - start_time
-            print('Time elapsed at object creation {}'.format(time_elapsed))
+            # self.object_creation_time = datetime.now() - start_time
             if self.first_only:
                 break
         return waymo_data_chunk

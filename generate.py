@@ -7,6 +7,7 @@ from zipfile import ZipFile
 import os
 from pathlib import Path
 from os.path import basename
+from datetime import datetime
 
 from dataloader.WaymoDataset import WaymoDataLoader
 from libraries.pointcloudlib import get_stixel_from_laser_data
@@ -17,6 +18,8 @@ from libraries.pointcloudlib import force_stixel_into_image_grid
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 data_dir = config['raw_data_path'] + config['phase']
+
+overall_start_time = datetime.now()
 
 
 def main():
@@ -40,7 +43,8 @@ def main():
         thread.join()
     create_sample_map()
     create_zip_chunks()
-    print("Finished!")
+    overall_time = datetime.now() - overall_start_time
+    print("Finished! in {}".format(overall_time))
 
 
 def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
@@ -51,6 +55,7 @@ def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
         for frame in dataloader[index]:
             # if frame_num % 5 == 0:
             # iterate over all needed views
+            start_time = datetime.now()
             laser_stixel, laser_by_angle = get_stixel_from_laser_data(
                 laser_points_by_view=frame.laser_points[:config['num_views']])
             training_data = force_stixel_into_image_grid(laser_stixel)
@@ -59,7 +64,9 @@ def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
                                       stixels=training_data[camera_view],
                                       name=f"{frame.name}-{frame_num}-{camera_view}")
             frame_num += 5
-        print(f"TFRecord-file with idx {index} finished with {frame_num/5} frames")
+        print(f"TFRecord-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/5)} frames")
+        step_time = datetime.now() - overall_start_time
+        print("Time elapsed: {}".format(step_time))
 
 
 def export_single_dataset(image, stixels, name):

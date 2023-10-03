@@ -11,7 +11,7 @@ from PIL import Image
 
 
 class WaymoDataLoader:
-    def __init__(self, data_dir, camera_segmentation_only=False, first_only=False):
+    def __init__(self, data_dir, camera_segmentation_only=False, first_only=True):
         """
         Loads a full set of waymo data in single frames, can be one tf_record file or a folder of  tf_record files.
         provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
@@ -80,8 +80,8 @@ class WaymoData:
             camera_segmentation_only:
         """
         # Base declaration
-        self.images = []
-        self.laser_points = []
+        self.cameras = []
+        self.image_points = []
         self.camera_segmentation_only = camera_segmentation_only
         self.name = tf_frame.context.name
         # Transformations
@@ -97,6 +97,7 @@ class WaymoData:
         Args:
             frame: Expects the full frame
         Returns: A list of points and a list of projections: (0 = Front, 1 = Side_left, 2 = Side_right, 3 = Left, 4 = Right)
+        shape: [x, y, z, proj_x, proj_y]
         """
         # Cuts for just the front view (front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4)
         (range_images, camera_projections, segmentation_labels, range_image_top_pose) = \
@@ -120,9 +121,9 @@ class WaymoData:
             laser_points_view = tf.gather_nd(laser_points, tf.where(mask)).numpy()
             laser_camera_projections_view = tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy()
             concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3]))
-            self.laser_points.append(concatenated_laser_pts)
+            self.image_points.append(concatenated_laser_pts)
 
     def convert_images_to_pil(self, frame_images):
         images = sorted(frame_images, key=lambda i: i.name)
         for image in images:
-            self.images.append(Image.fromarray(tf.image.decode_jpeg(image.image).numpy()))
+            self.cameras.append(Image.fromarray(tf.image.decode_jpeg(image.image).numpy()))

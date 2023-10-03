@@ -57,10 +57,10 @@ def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
             # iterate over all needed views
             start_time = datetime.now()
             laser_stixel, laser_by_angle = get_stixel_from_laser_data(
-                laser_points_by_view=frame.laser_points[:config['num_views']])
+                laser_points_by_view=frame.image_points[:config['num_views']])
             training_data = force_stixel_into_image_grid(laser_stixel)
             for camera_view in range(len(training_data)):
-                export_single_dataset(image=frame.images[camera_view],
+                export_single_dataset(image=frame.cameras[camera_view],
                                       stixels=training_data[camera_view],
                                       name=f"{frame.name}-{frame_num}-{camera_view}")
             frame_num += 5

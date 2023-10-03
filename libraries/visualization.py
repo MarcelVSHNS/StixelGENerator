@@ -31,7 +31,7 @@ def plot_points_on_image(images, laser_points, stixels=None, reasons=None, title
         xs.append(point[0])  # width, col
         ys.append(point[1])  # height, row
         colors.append(rgba(point[2]))
-    plt.scatter(xs, ys, c=colors, s=12.0, edgecolors="none")
+    plt.scatter(xs, ys, c=colors, s=7.0, edgecolors="none")
     if stixels is not None:
         z_stixel = []
         z_stixel_y = []

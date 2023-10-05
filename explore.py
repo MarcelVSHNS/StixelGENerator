@@ -27,9 +27,9 @@ def main():
                 5 .images (camera view - selected by index[])
                 5 .laser_points (shape of [..., [x, y, z, img_x, img_y]])"""
     if dataset_to_use == "ameise":
-        dataset = AmeiseDataLoader(data_dir=data_dir, first_only=False)
+        dataset = AmeiseDataLoader(data_dir=data_dir, first_only=True)
     else:
-        dataset = WaymoDataLoader(data_dir=data_dir, camera_segmentation_only=False, first_only=False)
+        dataset = WaymoDataLoader(data_dir=data_dir, camera_segmentation_only=False, first_only=True)
 
     # Example to display the lidar camera projection and provide an exploring data sample
     if config['exploring']['random_idx']:
@@ -55,10 +55,11 @@ def main():
     # Search for Stixel on image
     #stixels, _reasons = analyse_lidar_col_for_stixel([laser_by_angle[-1][col]], investigate=True)
     # Full Point Cloud
-    """
+
     plot_points_on_image(images=sample.cameras[view],
                          laser_points=sample.image_points[view],
                          title=f"Idx = {idx}, Frame: {frame_num}, View: {view}")
+    """
     # One angle with stixel
     plot_points_on_image(images=sample.images[view],
                          laser_points=laser_by_angle[view][col],

@@ -1,4 +1,4 @@
-phase: training
+phase: validation
 # testing
 # validation
 data_path: data/
@@ -10,7 +10,7 @@ explore_data: True
 exploring:
   view: 1
   random_idx: False
-  idx: -1
+  idx: 2
   frame_num: -1
   col: 180
 explore_data_deep: False

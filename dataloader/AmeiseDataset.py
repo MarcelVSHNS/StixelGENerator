@@ -3,6 +3,7 @@ from ameisedataset.utils.transformation import get_projection_matrix
 import glob
 import os
 import numpy as np
+import time
 
 from typing import List
 
@@ -55,6 +56,12 @@ class AmeiseData(ad.data.Frame):
         self.name = name
         # transformation
         self.point_slices(ad_info)
+        self.rectify_images(ad_info)
+
+    def rectify_images(self, info: ad.data.Infos):
+        cams_available, _ = self.get_data_lists()
+        for camera in cams_available:
+            self.cameras[camera] = ad.utils.transformation.rectify_image(self.cameras[camera], info.cameras[camera], crop=True)
 
     def point_slices(self, info: ad.data.Infos):
         cams_available, _ = self.get_data_lists()

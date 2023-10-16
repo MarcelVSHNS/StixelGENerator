@@ -1,23 +1,25 @@
-phase: validation
+phase: testing
 # testing
+# training
 # validation
 data_path: data/
 targets: targets
-raw_data_path: raw/ameise/
+raw_data_path: /media/marcel/Data1/ameise/
 # /media/marcel/Data1/
 # raw/
 explore_data: True
 exploring:
   view: 1
   random_idx: False
-  idx: 2
+  idx: 20
   frame_num: -1
   col: 180
 explore_data_deep: False
 num_views: 3
 num_threads: 1
 dataset_name: ameise-test
-num_zips_training: 16
-num_zips_validation: 4
+num_zips_training: 15
+num_zips_validation: 3
 num_zips_testing: 3
 selected_dataset: ameise
+cameras_to_use: [1]

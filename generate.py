@@ -10,6 +10,7 @@ from os.path import basename
 from datetime import datetime
 
 from dataloader.WaymoDataset import WaymoDataLoader
+from dataloader.AmeiseDataset import AmeiseDataLoader
 from libraries.pointcloudlib import get_stixel_from_laser_data
 from libraries.pointcloudlib import force_stixel_into_image_grid
 
@@ -18,24 +19,26 @@ from libraries.pointcloudlib import force_stixel_into_image_grid
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 data_dir = config['raw_data_path'] + config['phase']
-
+dataset_to_use = config['selected_dataset']
 overall_start_time = datetime.now()
 
 
 def main():
     # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
     #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
-    waymo_dataset = WaymoDataLoader(data_dir=data_dir, camera_segmentation_only=False, first_only=False)
-    # Usage: sample = waymo_dataset[idx][frame_num]
+    if dataset_to_use == "ameise":
+        dataset = AmeiseDataLoader(data_dir=data_dir, first_only=False)
+    else:
+        dataset = WaymoDataLoader(data_dir=data_dir, camera_segmentation_only=False, first_only=True)
 
-    thread_workload = int(len(waymo_dataset) / config['num_threads'])
+    thread_workload = int(len(dataset) / config['num_threads'])
     assert thread_workload > 0, "Too less files for num_threads"
     # distribution of idx over the threads
-    dataset_chunk = list(chunks(list(range(len(waymo_dataset))), thread_workload))
+    dataset_chunk = list(chunks(list(range(len(dataset))), thread_workload))
     threads = []
     for file_index_list in dataset_chunk:
         # create thread with arg dataset_list (chunk)
-        x = threading.Thread(target=thread__generate_data_from_tfrecord_chunk, args=(file_index_list, waymo_dataset))
+        x = threading.Thread(target=thread__generate_data_from_tfrecord_chunk, args=(file_index_list, dataset))
         threads.append(x)
         x.start()
         print("Thread is working ...")
@@ -50,21 +53,26 @@ def main():
 def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
     # work on a list of assigned indices
     for index in index_list:
+        print(f'index: {index} in progress ...' )
         # iterate over all frames inside the tfrecord
         frame_num = 0
-        for frame in dataloader[index]:
+        current_set = dataloader[index]
+        if current_set is None:
+            break
+        for frame in current_set:
             # if frame_num % 5 == 0:
             # iterate over all needed views
             start_time = datetime.now()
+            # laser_points_by_view=frame.image_points[:config['num_views']])
             laser_stixel, laser_by_angle = get_stixel_from_laser_data(
-                laser_points_by_view=frame.image_points[:config['num_views']])
+                laser_points_by_view=[frame.image_points[config['exploring']['view']]])
             training_data = force_stixel_into_image_grid(laser_stixel)
-            for camera_view in range(len(training_data)):
-                export_single_dataset(image=frame.cameras[camera_view],
-                                      stixels=training_data[camera_view],
+            for camera_view in config['cameras_to_use']:
+                export_single_dataset(image=frame.cameras[camera_view].image,
+                                      stixels=training_data[0],
                                       name=f"{frame.name}-{frame_num}-{camera_view}")
-            frame_num += 5
-        print(f"TFRecord-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/5)} frames")
+            frame_num += 1
+        print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
         print("Time elapsed: {}".format(step_time))
 
@@ -73,6 +81,7 @@ def export_single_dataset(image, stixels, name):
     img_path = os.path.join(config['data_path'], config['phase'])
     label_path = os.path.join(img_path, config['targets'])
     # save image
+    os.makedirs(img_path, exist_ok=True)
     image.save(os.path.join(img_path, name+".png"))
     # create gt line
     target_list = []
@@ -81,6 +90,7 @@ def export_single_dataset(image, stixels, name):
         target_list.append([f"{config['phase']}/{name}.png", int(stixel[3]), int(stixel[4]), int(0.0), round(depth, 1)])
     target = pd.DataFrame(target_list)
     target.columns = ['img_path', 'x', 'y', 'class', 'depth']
+    os.makedirs(label_path, exist_ok=True)
     target.to_csv(os.path.join(label_path, name+".csv"), index=False)
 
 

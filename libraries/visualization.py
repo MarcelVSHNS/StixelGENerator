@@ -52,6 +52,7 @@ def plot_points_on_image(images, laser_points, stixels=None, reasons=None, title
                 z_stixel_y.append(stixel[4])
         plt.scatter(z_stixel, z_stixel_y, c='#ff0000', s=18.0)
     plt.title(title)
+    plt.savefig("test_okt_23.png", bbox_inches='tight', pad_inches=0.1)
     plt.show()
 
 

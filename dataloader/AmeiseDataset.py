@@ -1,5 +1,6 @@
 import ameisedataset as ad
-from ameisedataset.utils.transformation import get_projection_matrix
+from ameisedataset.data import Camera, Lidar
+
 import glob
 import os
 import numpy as np
@@ -37,7 +38,7 @@ class AmeiseDataLoader:
         for ad_frame in frames:
             # start_time = datetime.now()
             if frame_num % 2 == 0:
-                if ad_frame.cameras[1].image is not None:
+                if ad_frame.cameras[1].image is not None and ad_frame.cameras[2].image is not None:
                     ameise_data_chunk.append(AmeiseData(ad_frame, infos, name="frame_" + str(idx) + "_" + self.ameise_record_map[idx].split('/')[-1].split('.')[0]))
                     # self.object_creation_time = datetime.now() - start_time
                     if self.first_only:
@@ -75,8 +76,6 @@ class AmeiseData(ad.data.Frame):
         cams_available, _ = self.get_data_lists()
         if ad.data.Camera.STEREO_RIGHT in cams_available:
             cams_available.remove(ad.data.Camera.STEREO_RIGHT)
-        else:
-            print(self.name)
         for camera in cams_available:
             pts, projection = ad.utils.transformation.get_projection_matrix(pcloud=self.lidar[ad.data.Lidar.OS1_TOP].points,
                                                                             lidar_info=info.lidar[ad.data.Lidar.OS1_TOP],

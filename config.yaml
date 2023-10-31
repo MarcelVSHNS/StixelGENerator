@@ -1,17 +1,17 @@
-phase: testing
+phase: validation
 # testing
 # training
 # validation
-data_path: data/
-targets: targets
+data_path: /home/marcel/datasets/ameise_okt23/
+targets: targets_from_lidar
 raw_data_path: /media/marcel/Data1/ameise/
 # /media/marcel/Data1/
 # raw/
-explore_data: True
+explore_data: False
 exploring:
   view: 1
   random_idx: False
-  idx: 20
+  idx: 56
   frame_num: -1
   col: 180
 explore_data_deep: False

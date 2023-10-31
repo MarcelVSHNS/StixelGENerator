@@ -55,11 +55,11 @@ def main():
     # Search for Stixel on image
     #stixels, _reasons = analyse_lidar_col_for_stixel([laser_by_angle[-1][col]], investigate=True)
     # Full Point Cloud
-    """
+
     plot_points_on_image(images=sample.cameras[view],
                          laser_points=sample.image_points[view],
                          title=f"Idx = {idx}, Frame: {frame_num}, View: {view}")
-    
+    """
     # One angle with stixel
     plot_points_on_image(images=sample.images[view],
                          laser_points=laser_by_angle[view][col],

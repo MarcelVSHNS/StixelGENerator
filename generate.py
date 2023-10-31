@@ -9,20 +9,23 @@ from pathlib import Path
 from os.path import basename
 from datetime import datetime
 
-from dataloader.WaymoDataset import WaymoDataLoader
-from dataloader.AmeiseDataset import AmeiseDataLoader
 from libraries.pointcloudlib import get_stixel_from_laser_data
 from libraries.pointcloudlib import force_stixel_into_image_grid
-
 
 # open Config
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)
 data_dir = config['raw_data_path'] + config['phase']
 dataset_to_use = config['selected_dataset']
+
+if dataset_to_use == "ameise":
+    from dataloader.AmeiseDataset import AmeiseDataLoader
+    from ameisedataset.data import Camera
+else:
+    from dataloader.WaymoDataset import WaymoDataLoader
+
+
 overall_start_time = datetime.now()
-
-
 def main():
     # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
     #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
@@ -45,7 +48,7 @@ def main():
     for thread in threads:
         thread.join()
     create_sample_map()
-    create_zip_chunks()
+    # create_zip_chunks()
     overall_time = datetime.now() - overall_start_time
     print("Finished! in {}".format(overall_time))
 
@@ -64,25 +67,44 @@ def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
             # iterate over all needed views
             start_time = datetime.now()
             # laser_points_by_view=frame.image_points[:config['num_views']])
+            name = f"{frame.name}-{frame_num}-{1}"
+            base_path = os.path.join(config['data_path'], config['phase'])
+            left_img_path = os.path.join(base_path, Camera.get_name_by_value(Camera.STEREO_LEFT))
+            os.makedirs(left_img_path, exist_ok=True)
+            frame.cameras[Camera.STEREO_LEFT].image.save(os.path.join(left_img_path, name + ".png"))
+            right_img_path = os.path.join(base_path, Camera.get_name_by_value(Camera.STEREO_RIGHT))
+            os.makedirs(right_img_path, exist_ok=True)
+            frame.cameras[Camera.STEREO_RIGHT].image.save(os.path.join(right_img_path, name + ".png"))
+            """
             laser_stixel, laser_by_angle = get_stixel_from_laser_data(
                 laser_points_by_view=[frame.image_points[config['exploring']['view']]])
             training_data = force_stixel_into_image_grid(laser_stixel)
             for camera_view in config['cameras_to_use']:
-                export_single_dataset(image=frame.cameras[camera_view].image,
+                export_single_dataset(frame=frame,
                                       stixels=training_data[0],
                                       name=f"{frame.name}-{frame_num}-{camera_view}")
+            """
             frame_num += 1
         print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
         print("Time elapsed: {}".format(step_time))
 
 
-def export_single_dataset(image, stixels, name):
-    img_path = os.path.join(config['data_path'], config['phase'])
-    label_path = os.path.join(img_path, config['targets'])
+def export_single_dataset(frame, stixels, name):
+    view = int(name.split("-")[-1])
+    base_path = os.path.join(config['data_path'], config['phase'])
+    label_path = os.path.join(base_path, config['targets'])
     # save image
-    os.makedirs(img_path, exist_ok=True)
-    image.save(os.path.join(img_path, name+".png"))
+    os.makedirs(base_path, exist_ok=True)
+    if dataset_to_use == 'ameise':
+        left_img_path = os.path.join(base_path, Camera.get_name_by_value(view))
+        os.makedirs(left_img_path, exist_ok=True)
+        frame.cameras[view].image.save(os.path.join(left_img_path, name + ".png"))
+        right_img_path = os.path.join(base_path, Camera.get_name_by_value(Camera.STEREO_RIGHT))
+        os.makedirs(right_img_path, exist_ok=True)
+        frame.cameras[Camera.STEREO_RIGHT].image.save(os.path.join(right_img_path, name + ".png"))
+    else:
+        frame.cameras[view].image.save(os.path.join(base_path, name + ".png"))
     # create gt line
     target_list = []
     for stixel in stixels:

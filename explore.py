@@ -5,6 +5,7 @@ import random
 import ameisedataset as ad
 import investigate as inv
 
+import libraries.pointcloudlib2 as pl2
 from libraries.visualization import plot_points_on_image
 from libraries.pointcloudlib import get_stixel_from_laser_data, remove_ground
 from libraries.pointcloudlib import detect_objects_in_point_cloud_numerical
@@ -52,13 +53,22 @@ def main():
     bild = sample.cameras[view]
     y_offset = 35
 
+    col_num = 70
     # check 3d data
     laser_points = sample.image_points[1]
+    laser_points = pl2.remove_ground(laser_points)
+    laser_points, angles = pl2.group_points_by_angle(laser_points)
+    inv.plot_cluster_points_on_image(bild, laser_points)
+    inv.plot_cluster_points_on_image(bild, [laser_points[col_num]])
+    stixel = pl2.cluster_scanline(laser_points[col_num])
+    """
     laser_points = remove_ground(laser_points)
     grouped_points_list, group_angles_list = inv.group_points_by_angle(laser_points)
     inv.plot_cluster_points_on_image(bild, grouped_points_list)
 
+
     col_num = 70
+    
     cluster_min_max, sorted_indices, sorted_r, sorted_z, clusters = inv.calculate_clusters(grouped_points_list[col_num])
     inv.visualize_z_over_r(cluster_min_max, sorted_r, sorted_z, clusters)
     inv.visualize_clusters(np.array(bild), grouped_points_list[col_num], cluster_min_max, sorted_indices, sorted_z, clusters, y_offset=y_offset, single=True)
@@ -66,8 +76,7 @@ def main():
     all_cluster_min_max, all_sorted_indices, all_sorted_r, all_sorted_z, all_clusters, all_data = inv.process_all_columns(
         grouped_points_list)
     inv.visualize_all_columns(np.array(bild), all_cluster_min_max, all_sorted_indices, all_sorted_z, all_clusters, all_data, y_offset=y_offset)
-
-
+    """
 
     # Show the Objects by point cloud
     # detect_objects_in_point_cloud_numerical(sample.laser_points[view][..., :3], visualize=True)

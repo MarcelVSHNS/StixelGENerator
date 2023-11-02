@@ -18,8 +18,9 @@ def rgba(r, r_max=50):
     return c
 
 
-def plot_points_on_image(images, laser_points, stixels=None, reasons=None, title="Points X"):
+def plot_points_on_image(images, laser_points, y_offset=0, stixels=None, reasons=None, title="Points X"):
     plt.figure(figsize=(20, 12))
+    plt.tight_layout()
     plt.imshow(images)
 
     points_view_norm = np.linalg.norm(laser_points[..., :3], axis=-1, keepdims=True)
@@ -29,7 +30,7 @@ def plot_points_on_image(images, laser_points, stixels=None, reasons=None, title
     colors = []
     for point in points:
         xs.append(point[0])  # width, col
-        ys.append(point[1])  # height, row
+        ys.append(point[1] - y_offset)  # height, row
         colors.append(rgba(point[2]))
     plt.scatter(xs, ys, c=colors, s=7.0, edgecolors="none")
     if stixels is not None:
@@ -52,7 +53,7 @@ def plot_points_on_image(images, laser_points, stixels=None, reasons=None, title
                 z_stixel_y.append(stixel[4])
         plt.scatter(z_stixel, z_stixel_y, c='#ff0000', s=18.0)
     plt.title(title)
-    plt.savefig("test_okt_23.png", bbox_inches='tight', pad_inches=0.1)
+    #plt.savefig("test_okt_23.png", bbox_inches='tight', pad_inches=0.1)
     plt.show()
 
 

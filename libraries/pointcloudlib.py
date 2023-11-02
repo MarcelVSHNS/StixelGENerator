@@ -30,8 +30,11 @@ def get_stixel_from_laser_data(laser_points_by_view):
         gradient_cuts = []
         # calculate stixel over every column
         # Returns a list where every entry is a list of found stixel ([..., [x,y,z, img_x, img_y]])
+        pts = laser_points_by_angle
+        #np.savez("anglepoints.npz", *pts)
         for angle_points in laser_points_by_angle:
             stixel_from_col, _ = analyse_lidar_col_for_stixel(angle_points)
+            #stixel_from_col = detect_stixel_by_col(angle_points)
             if stixel_from_col is not None:
                 gradient_cuts.append(stixel_from_col)
         laser_stixel.append(gradient_cuts)
@@ -291,3 +294,50 @@ def normalize_into_grid(pos, step=8, offset=0):
         val_norm = pos - rest
     assert val_norm % step == 0
     return val_norm + offset
+
+
+def remove_ground(points, distance_threshold=0.18, ransac_n=3, num_iterations=10000):
+    """
+    Removes the ground from a point cloud and retains the associated projection data.
+    This function identifies and removes the points that belong to the ground plane
+    using the RANSAC algorithm. It then extracts the projection data from the outlier
+    points which are not part of the ground.
+
+    Args:
+        points (numpy.ndarray): The input array containing point cloud data and projection data.
+                              Expected shape is (N, 5) where N is the number of points.
+                              The first three columns are x, y, z coordinates of the point cloud.
+                              The last two columns proj_x, proj_y are the projection data.
+        distance_threshold (float): The maximum distance a point can be from the plane model
+                                  to be considered an inlier.
+        ransac_n (int): The number of points to sample for estimating the plane.
+        num_iterations (int): The number of iterations to run the RANSAC algorithm.
+    Returns:
+        combined_data_without_ground (numpy.ndarray): An array of shape (M, 5), where M is the number of
+                                                    points not belonging to the ground. The first three
+                                                    columns are the x, y, z coordinates, and the last two
+                                                    columns are the associated projection data.
+    """
+    # Convert the input array to a point cloud
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points[:, :3])
+    # Use RANSAC to segment the ground plane
+    plane_model, inliers = pcd.segment_plane(distance_threshold=distance_threshold,
+                                             ransac_n=ransac_n,
+                                             num_iterations=num_iterations)
+    # Select points that are not part of the ground plane
+    pcd_without_ground = pcd.select_by_index(inliers, invert=True)
+    # Create a boolean mask for inliers
+    inlier_mask = np.ones(len(points), dtype=bool)
+    inlier_mask[inliers] = False
+    outlier_indices = np.arange(len(points))[inlier_mask]
+    # Extract the projection data for the outliers
+    projection_data = points[outlier_indices, 3:]
+    # Convert the point cloud without ground to a NumPy array
+    pcd_without_ground_np = np.asarray(pcd_without_ground.points)
+    # Merge the point cloud without ground with the projection data
+    combined_data_without_ground = np.hstack((pcd_without_ground_np, projection_data))
+    return combined_data_without_ground
+
+def detect_stixel_by_col(points_by_angle):
+    pass

@@ -2,24 +2,30 @@ import numpy as np
 import open3d as o3d
 import yaml
 import random
+import ameisedataset as ad
+import investigate as inv
 
-from dataloader.WaymoDataset import WaymoDataLoader
-from dataloader.AmeiseDataset import AmeiseDataLoader
 from libraries.visualization import plot_points_on_image
-from libraries.pointcloudlib import get_stixel_from_laser_data
+from libraries.pointcloudlib import get_stixel_from_laser_data, remove_ground
 from libraries.pointcloudlib import detect_objects_in_point_cloud_numerical
 from libraries.visualization import plot_points_2d_graph
 from libraries.pointcloudlib import analyse_lidar_col_for_stixel
 from libraries.pointcloudlib import force_stixel_into_image_grid
 
+# open Config
+with open('config.yaml') as yamlfile:
+    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
+data_dir = config['raw_data_path'] + config['phase']
+dataset_to_use = config['selected_dataset']
+
+if dataset_to_use == "ameise":
+    from dataloader.AmeiseDataset import AmeiseDataLoader
+    from ameisedataset.data import Camera
+else:
+    from dataloader.WaymoDataset import WaymoDataLoader
+
 
 def main():
-    # open Config
-    with open('config.yaml') as yamlfile:
-        config = yaml.load(yamlfile, Loader=yaml.FullLoader)
-    data_dir = config['raw_data_path'] + config['phase']
-    dataset_to_use = config['selected_dataset']
-
     """ load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views). Like e.g.:
         798 tfrecord-files (selected by "idx")
@@ -43,6 +49,25 @@ def main():
     assert len(dataset) >= idx, f'The index is too high, records found: {len(dataset)}'
     #assert len(dataset[idx][frame_num].cameras) != 0, 'The chosen index has no segmentation data'
     sample = dataset[idx][frame_num]
+    bild = sample.cameras[view]
+    y_offset = 35
+
+    # check 3d data
+    laser_points = sample.image_points[1]
+    laser_points = remove_ground(laser_points)
+    grouped_points_list, group_angles_list = inv.group_points_by_angle(laser_points)
+    inv.plot_cluster_points_on_image(bild, grouped_points_list)
+
+    col_num = 70
+    cluster_min_max, sorted_indices, sorted_r, sorted_z, clusters = inv.calculate_clusters(grouped_points_list[col_num])
+    inv.visualize_z_over_r(cluster_min_max, sorted_r, sorted_z, clusters)
+    inv.visualize_clusters(np.array(bild), grouped_points_list[col_num], cluster_min_max, sorted_indices, sorted_z, clusters, y_offset=y_offset, single=True)
+
+    all_cluster_min_max, all_sorted_indices, all_sorted_r, all_sorted_z, all_clusters, all_data = inv.process_all_columns(
+        grouped_points_list)
+    inv.visualize_all_columns(np.array(bild), all_cluster_min_max, all_sorted_indices, all_sorted_z, all_clusters, all_data, y_offset=y_offset)
+
+
 
     # Show the Objects by point cloud
     # detect_objects_in_point_cloud_numerical(sample.laser_points[view][..., :3], visualize=True)
@@ -50,14 +75,14 @@ def main():
     # Basic concept is to load general data like waymo and apply the library functions to the provided data
     # Get Stixel from Laser
     # Get Laser points sorted by angle
-    laser_stixel, laser_by_angle = get_stixel_from_laser_data(laser_points_by_view=[sample.image_points[config['exploring']['view']]])
+    laser_stixel, laser_by_angle = get_stixel_from_laser_data(laser_points_by_view=[laser_points])
 
     # Search for Stixel on image
     #stixels, _reasons = analyse_lidar_col_for_stixel([laser_by_angle[-1][col]], investigate=True)
     # Full Point Cloud
-
     plot_points_on_image(images=sample.cameras[view],
-                         laser_points=sample.image_points[view],
+                         laser_points=laser_points,
+                         y_offset=-y_offset,
                          title=f"Idx = {idx}, Frame: {frame_num}, View: {view}")
     """
     # One angle with stixel
@@ -71,7 +96,7 @@ def main():
                          stixels=stixels,
                          reasons=_reasons,
                          title=f"Idx = {idx}, Frame: {frame_num}, View: {view}, Col: {col}")
-    """
+    
     # Training data visual
     training_data = force_stixel_into_image_grid(laser_stixel)
     plot_points_on_image(images=sample.cameras[view],
@@ -79,7 +104,7 @@ def main():
                          title=f"Idx = {idx}, Frame: {frame_num}, View: {view}")
     # Show the Objects by point cloud
     # detect_objects_in_point_cloud_numerical(training_data[view][..., :3], visualize=True)
-
+    """
 
 if __name__ == "__main__":
     main()

@@ -30,6 +30,7 @@ class AmeiseDataLoader:
     def __getitem__(self, idx):
         try:
             infos, frames = ad.unpack_record(self.ameise_record_map[idx])
+            print(infos.filename)
         except:
             print(self.ameise_record_map[idx])
             return None

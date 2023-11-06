@@ -1,20 +1,23 @@
 import os
 import math
 import yaml
-import threading
+from PIL import Image
+from multiprocessing import Process
 import pandas as pd
+import numpy as np
+from typing import List, Tuple
 from zipfile import ZipFile
 from pathlib import Path
 from os.path import basename
 from datetime import datetime
-from dataloader.AmeiseDataset import AmeiseDataLoader
-from ameisedataset.data import Camera
-
-import libraries.pointcloudlib2 as pl2
+# change xxxDataLoader to select the dataset
+from dataloader import AmeiseDataLoader as Dataset, AmeiseData as Data
+from libraries import (remove_far_points, remove_ground, group_points_by_angle, Scanline, force_stixel_into_image_grid,
+                       PositionClass, Stixel)
 
 # open Config
-with open('config.yaml') as yamlfile:
-    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
+with open('config.yaml') as yaml_file:
+    config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 data_dir = config['raw_data_path'] + config['phase']
 dataset_to_use = config['selected_dataset']
 
@@ -24,97 +27,83 @@ overall_start_time = datetime.now()
 def main():
     # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
     #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
-    dataset = AmeiseDataLoader(data_dir=data_dir, first_only=False)
+    dataset: Dataset = Dataset(data_dir=data_dir, first_only=False)
 
-    thread_workload = int(len(dataset) / config['num_threads'])
-    assert thread_workload > 0, "Too less files for num_threads"
+    process_workload: int = int(len(dataset) / config['num_threads'])
+    assert process_workload > 0, "Too less files for num_threads"
     # distribution of idx over the threads
-    dataset_chunk = list(chunks(list(range(len(dataset))), thread_workload))
-    threads = []
+    dataset_chunk: List[List[int]] = list(chunks(list(range(len(dataset))), process_workload))
+    processes: List[Process] = []
     for file_index_list in dataset_chunk:
         # create thread with arg dataset_list (chunk)
-        x = threading.Thread(target=thread__generate_data_from_tfrecord_chunk, args=(file_index_list, dataset))
-        threads.append(x)
+        x: Process = Process(target=_generate_data_from_record_chunk, args=(file_index_list, dataset))
+        processes.append(x)
         x.start()
-        print("Thread is working ...")
-    for thread in threads:
-        thread.join()
-    # create_sample_map()
+        print("Process is working ...")
+    for process in processes:
+        process.join()
     # create_zip_chunks()
     overall_time = datetime.now() - overall_start_time
     print("Finished! in {}".format(overall_time))
 
 
-def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
+def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset):
     # work on a list of assigned indices
     for index in index_list:
-        print(f'index: {index} in progress ...' )
+        print(f'index: {index} in progress ...')
         # iterate over all frames inside the tfrecord
-        frame_num = 0
-        current_set = dataloader[index]
-        if current_set is None:
+        frame_num: int = 0
+        data_chunk: List[Data] = dataloader[index]
+        if data_chunk is None:
             break
-        for frame in current_set:
-            # if frame_num % 5 == 0:
-            # iterate over all needed views
-            start_time = datetime.now()
-            # laser_points_by_view=frame.image_points[:config['num_views']])
-            name = f"{frame.name}-{frame_num}-{1}"
-            base_path = os.path.join(config['data_path'], config['phase'])
-            left_img_path = os.path.join(base_path, Camera.get_name_by_value(Camera.STEREO_LEFT))
-            os.makedirs(left_img_path, exist_ok=True)
-            frame.cameras[Camera.STEREO_LEFT].image.save(os.path.join(left_img_path, name + ".png"))
-            right_img_path = os.path.join(base_path, Camera.get_name_by_value(Camera.STEREO_RIGHT))
-            os.makedirs(right_img_path, exist_ok=True)
-            frame.cameras[Camera.STEREO_RIGHT].image.save(os.path.join(right_img_path, name + ".png"))
-            laser_points = frame.image_points[1]
-            laser_points = pl2.remove_far_points(laser_points)
-            laser_points = pl2.remove_ground(laser_points)
-            laser_points, angles = pl2.group_points_by_angle(laser_points)
-            stixel = []
-            for scanline in laser_points:
-                scanline_obj = pl2.Scanline(scanline)
-                stixel.append(scanline_obj.get_stixels())
-            grid_stixel = pl2.force_stixel_into_image_grid(stixel)
-            export_single_dataset(frame=frame,
+        for frame in data_chunk:
+            # generate stixel
+            laser_points: np.array = remove_far_points(frame.points)    # delete far points
+            laser_points = remove_ground(laser_points)                  # delete floor
+            laser_points = group_points_by_angle(laser_points)          # find columns
+            stixel: List[List[Stixel]] = []
+            for laser_points_by_angle in laser_points:
+                column: Scanline = Scanline(laser_points_by_angle)
+                stixel.append(column.get_stixels())                     # calculate stixel
+            grid_stixel: List[Stixel] = force_stixel_into_image_grid(stixel, dataloader.img_size)
+            export_single_dataset(image_left=frame.image,
+                                  image_right=frame.image_right,
                                   stixels=grid_stixel,
-                                  name=f"{frame.name}-{frame_num}-{1}")
+                                  name=frame.name)
             frame_num += 1
         print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
         print("Time elapsed: {}".format(step_time))
 
 
-def export_single_dataset(frame, stixels, name):
-    view = int(name.split("-")[-1])
-    base_path = os.path.join(config['data_path'], config['phase'])
+def export_single_dataset(image_left: Image, image_right: Image, stixels: List[Stixel], name: str):
+    # define paths
+    base_path: str = os.path.join(config['data_path'], config['phase'])
+    left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
+    right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
     label_path = os.path.join(base_path, config['targets'])
-    # create gt line
+    os.makedirs(left_img_path, exist_ok=True)
+    os.makedirs(right_img_path, exist_ok=True)
+    os.makedirs(label_path, exist_ok=True)
+    # save images
+    image_left.save(os.path.join(left_img_path, name + ".png"))
+    image_right.save(os.path.join(right_img_path, name + ".png"))
+    # create .csv
     target_list = []
     for stixel in stixels:
-        posi = 1 if stixel.position_class == pl2.PositionClass.BOTTOM else 2
-        depth = math.sqrt(math.pow(stixel.point['x'], 2) + math.pow(stixel.point['y'], 2))
-        target_list.append([f"{config['phase']}/{name}.png", int(stixel.point['proj_x']), int(stixel.point['proj_y']), int(posi), round(depth, 1)])
-    target = pd.DataFrame(target_list)
+        stixel_class: int = 1 if stixel.position_class == PositionClass.BOTTOM else 2
+        depth: float = math.sqrt(math.pow(stixel.point['x'], 2) + math.pow(stixel.point['y'], 2))
+        target_list.append([f"{config['phase']}/{name}.png", int(stixel.point['proj_x']), int(stixel.point['proj_y']), int(stixel_class), round(depth, 1)])
+    target: pd.DataFrame = pd.DataFrame(target_list)
     target.columns = ['img_path', 'x', 'y', 'class', 'depth']
-    os.makedirs(label_path, exist_ok=True)
+    # save .csv
     target.to_csv(os.path.join(label_path, name+".csv"), index=False)
 
 
-def chunks(lst, n):
+def chunks(lst, n) -> List[List[int]]:
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
-
-
-def create_sample_map():
-    files = os.listdir(f"data/{config['phase']}/targets")
-    map = []
-    for file in files:
-        map.append(os.path.splitext(file)[0])
-    image_map = pd.DataFrame(map)
-    image_map.to_csv(f"data/{config['phase']}.csv", index=False, header=False)
-    print("Map created")
 
 
 def create_zip_chunks():

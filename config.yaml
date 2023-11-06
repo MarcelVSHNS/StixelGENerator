@@ -16,7 +16,7 @@ exploring:
   col: 180
 explore_data_deep: False
 num_views: 3
-num_threads: 1
+num_threads: 4
 dataset_name: ameise-test
 num_zips_training: 15
 num_zips_validation: 3

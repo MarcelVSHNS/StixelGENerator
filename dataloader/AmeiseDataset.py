@@ -1,15 +1,54 @@
 import ameisedataset as ad
 from ameisedataset.data import Camera, Lidar
-
+from typing import List, Tuple
 import glob
 import os
 import numpy as np
-import time
+from PIL import Image
 
-from typing import List
+from libraries import point_dtype
+
+
+class AmeiseData:
+    def __init__(self, ad_frame: ad.data.Frame, ad_info: ad.data.Infos, name: str):
+        """
+        Base class for data from waymo open dataset
+        Args:
+            ad_frame:
+            ad_info:
+            name:
+        """
+        self.image: Image = ad_frame.cameras[Camera.STEREO_RIGHT].image
+        self.image_right: Image = ad_frame.cameras[Camera.STEREO_RIGHT].image
+        self.pov: np.array = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
+        self.points: np.array = self.point_slices()
+        self.name: str = name
+
+        self.frame: ad.data.Frame = ad_frame
+        self.frame_info: ad.data.Infos = ad_info
+        # transformation
+        self.rectify_images()
+
+    def rectify_images(self):
+        self.image = ad.utils.transformation.rectify_image(image=self.image,
+                                                           camera_information=self.frame_info.cameras[Camera.STEREO_LEFT],
+                                                           crop=True)
+        self.image_right = ad.utils.transformation.rectify_image(image=self.image_right,
+                                                                 camera_information=self.frame_info.cameras[Camera.STEREO_RIGHT],
+                                                                 crop=True)
+
+    def point_slices(self) -> np.array:
+        pts, projection = ad.utils.transformation.get_projection_matrix(pcloud=self.frame.lidar[Lidar.OS1_TOP].points,
+                                                                        lidar_info=self.frame_info.lidar[Lidar.OS1_TOP],
+                                                                        cam_info=self.frame_info.cameras[Camera.STEREO_LEFT])
+        projection_list = np.array(projection)
+        pts_coordinates = np.array(list(zip(pts['x'], pts['y'], pts['z'])))
+        combined_data = np.hstack((pts_coordinates, projection_list))
+        return combined_data.astype(point_dtype)   # x, y, z, proj_x, proj_y
+
 
 class AmeiseDataLoader:
-    def __init__(self, data_dir, first_only=False):
+    def __init__(self, data_dir: str, first_only: bool = False):
         """
         Loads a full set of ameise data in single frames, can be one .4mse file or a folder of .4mse files.
         provides a list by index for a .4mse-file which has ~50 frame objects. Every object has lists of
@@ -23,66 +62,29 @@ class AmeiseDataLoader:
             first_only: doesn't load the full ~20 frames to return a data sample if True
         """
         self.data_dir = data_dir
-        self.ameise_record_map = glob.glob(os.path.join(self.data_dir, '*.4mse'))
-        self.first_only = first_only
-        print(f"Found {len(self.ameise_record_map)} record files")
+        self.ameise_record_map: List[str] = glob.glob(os.path.join(self.data_dir, '*.4mse'))
+        self.first_only: bool = first_only
+        self.img_size: Tuple[int, int] = (1920, 1200)
+        self.stereo_available: bool = True
+        print(f"Found {len(self.ameise_record_map)} Ameise record files.")
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> List[AmeiseData]:
         try:
             infos, frames = ad.unpack_record(self.ameise_record_map[idx])
             print(infos.filename)
         except:
             print(self.ameise_record_map[idx])
             return None
-        ameise_data_chunk = []
-        frame_num = 0
+        ameise_data_chunk: List[AmeiseData] = []
+        frame_num: int = 0
         for ad_frame in frames:
-            # start_time = datetime.now()
-            if frame_num % 2 == 0:
+            if frame_num % 2 == 0:      # just use every second frame: 5 Hz
                 if ad_frame.cameras[1].image is not None and ad_frame.cameras[2].image is not None:
-                    ameise_data_chunk.append(AmeiseData(ad_frame, infos, name="frame_" + str(idx) + "_" + self.ameise_record_map[idx].split('/')[-1].split('.')[0]))
-                    # self.object_creation_time = datetime.now() - start_time
+                    ameise_data_chunk.append(AmeiseData(ad_frame, infos, name=f"frame_{str(idx)}_{self.ameise_record_map[idx].split('/')[-1].split('.')[0]}-{frame_num}" ))
                     if self.first_only:
                         break
             frame_num += 1
         return ameise_data_chunk
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.ameise_record_map)
-
-class AmeiseData(ad.data.Frame):
-    def __init__(self, ad_frame: ad.data.Frame, ad_info: ad.data.Infos, name):
-        """
-        Base class for data from waymo open dataset
-        Args:
-            ad_frame:
-            ad_info:
-            name:
-        """
-        super().__init__(ad_frame.frame_id, timestamp=ad_frame.timestamp)
-        self.cameras: List[ad.data.Image] = ad_frame.cameras
-        self.stereo_left_posi = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
-        self.lidar: List[ad.data.Points] = ad_frame.lidar
-        self.image_points = [[] for _ in range(4)]
-        self.name = name
-        # transformation
-        self.point_slices(ad_info)
-        self.rectify_images(ad_info)
-
-    def rectify_images(self, info: ad.data.Infos):
-        cams_available, _ = self.get_data_lists()
-        for camera in cams_available:
-            self.cameras[camera] = ad.utils.transformation.rectify_image(self.cameras[camera], info.cameras[camera], crop=True)
-
-    def point_slices(self, info: ad.data.Infos):
-        cams_available, _ = self.get_data_lists()
-        if ad.data.Camera.STEREO_RIGHT in cams_available:
-            cams_available.remove(ad.data.Camera.STEREO_RIGHT)
-        for camera in cams_available:
-            pts, projection = ad.utils.transformation.get_projection_matrix(pcloud=self.lidar[ad.data.Lidar.OS1_TOP].points,
-                                                                            lidar_info=info.lidar[ad.data.Lidar.OS1_TOP],
-                                                                            cam_info=info.cameras[camera])
-            projection_list = np.array(projection)
-            pts_coordinates = np.array(list(zip(pts['x'], pts['y'], pts['z'])))
-            combined_data = np.hstack((pts_coordinates, projection_list))
-            self.image_points[camera] = combined_data   # x, y, z, proj_x, proj_y

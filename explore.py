@@ -2,16 +2,10 @@ import numpy as np
 import open3d as o3d
 import yaml
 import random
-import ameisedataset as ad
 import investigate as inv
 
-import libraries.pointcloudlib2 as pl2
-from libraries.visualization import plot_points_on_image, plot_z_over_range, plot_on_image, extract_points_colors_labels
-from libraries.pointcloudlib import get_stixel_from_laser_data, remove_ground
-from libraries.pointcloudlib import detect_objects_in_point_cloud_numerical
-from libraries.visualization import plot_points_2d_graph
-from libraries.pointcloudlib import analyse_lidar_col_for_stixel
-from libraries.pointcloudlib import force_stixel_into_image_grid
+import libraries.pointcloudlib as pl2
+from libraries.visualization import plot_z_over_range, plot_on_image, extract_points_colors_labels
 
 # open Config
 with open('config.yaml') as yamlfile:
@@ -21,7 +15,6 @@ dataset_to_use = config['selected_dataset']
 
 if dataset_to_use == "ameise":
     from dataloader.AmeiseDataset import AmeiseDataLoader
-    from ameisedataset.data import Camera
 else:
     from dataloader.WaymoDataset import WaymoDataLoader
 

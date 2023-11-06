@@ -4,12 +4,12 @@ import yaml
 import threading
 import pandas as pd
 from zipfile import ZipFile
-import os
 from pathlib import Path
 from os.path import basename
 from datetime import datetime
+from dataloader.AmeiseDataset import AmeiseDataLoader
+from ameisedataset.data import Camera
 
-from libraries.pointcloudlib import get_stixel_from_laser_data
 import libraries.pointcloudlib2 as pl2
 
 # open Config
@@ -18,21 +18,13 @@ with open('config.yaml') as yamlfile:
 data_dir = config['raw_data_path'] + config['phase']
 dataset_to_use = config['selected_dataset']
 
-if dataset_to_use == "ameise":
-    from dataloader.AmeiseDataset import AmeiseDataLoader
-    from ameisedataset.data import Camera
-else:
-    from dataloader.WaymoDataset import WaymoDataLoader
-
-
 overall_start_time = datetime.now()
+
+
 def main():
     # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
     #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
-    if dataset_to_use == "ameise":
-        dataset = AmeiseDataLoader(data_dir=data_dir, first_only=False)
-    else:
-        dataset = WaymoDataLoader(data_dir=data_dir, camera_segmentation_only=False, first_only=True)
+    dataset = AmeiseDataLoader(data_dir=data_dir, first_only=False)
 
     thread_workload = int(len(dataset) / config['num_threads'])
     assert thread_workload > 0, "Too less files for num_threads"
@@ -75,15 +67,6 @@ def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
             right_img_path = os.path.join(base_path, Camera.get_name_by_value(Camera.STEREO_RIGHT))
             os.makedirs(right_img_path, exist_ok=True)
             frame.cameras[Camera.STEREO_RIGHT].image.save(os.path.join(right_img_path, name + ".png"))
-            """
-            laser_stixel, laser_by_angle = get_stixel_from_laser_data(
-                laser_points_by_view=[frame.image_points[config['exploring']['view']]])
-            training_data = force_stixel_into_image_grid(laser_stixel)
-            for camera_view in config['cameras_to_use']:
-                export_single_dataset(frame=frame,
-                                      stixels=training_data[0],
-                                      name=f"{frame.name}-{frame_num}-{camera_view}")      
-            """
             laser_points = frame.image_points[1]
             laser_points = pl2.remove_far_points(laser_points)
             laser_points = pl2.remove_ground(laser_points)
@@ -106,19 +89,6 @@ def export_single_dataset(frame, stixels, name):
     view = int(name.split("-")[-1])
     base_path = os.path.join(config['data_path'], config['phase'])
     label_path = os.path.join(base_path, config['targets'])
-    # save image
-    """
-    os.makedirs(base_path, exist_ok=True)
-    if dataset_to_use == 'ameise':
-        left_img_path = os.path.join(base_path, Camera.get_name_by_value(view))
-        os.makedirs(left_img_path, exist_ok=True)
-        frame.cameras[view].image.save(os.path.join(left_img_path, name + ".png"))
-        right_img_path = os.path.join(base_path, Camera.get_name_by_value(Camera.STEREO_RIGHT))
-        os.makedirs(right_img_path, exist_ok=True)
-        frame.cameras[Camera.STEREO_RIGHT].image.save(os.path.join(right_img_path, name + ".png"))
-    else:
-        frame.cameras[view].image.save(os.path.join(base_path, name + ".png"))
-    """
     # create gt line
     target_list = []
     for stixel in stixels:

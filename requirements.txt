@@ -2,3 +2,6 @@ numpy>=1.19.5
 matplotlib
 opencv-python
 Pillow
+pandas
+pyyaml
+ameise

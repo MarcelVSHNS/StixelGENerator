@@ -2,9 +2,11 @@ import open3d as o3d
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.metrics import pairwise_distances
+from typing import List
+from enum import Enum, auto
 
 
-def remove_ground(points, distance_threshold=0.18, ransac_n=3, num_iterations=10000):
+def remove_ground(points, distance_threshold=0.18, ransac_n=3, num_iterations=1000):
     """
     Removes the ground from a point cloud and retains the associated projection data.
     This function identifies and removes the points that belong to the ground plane
@@ -44,11 +46,41 @@ def remove_ground(points, distance_threshold=0.18, ransac_n=3, num_iterations=10
     pcd_without_ground_np = np.asarray(pcd_without_ground.points)
     # Merge the point cloud without ground with the projection data
     combined_data_without_ground = np.hstack((pcd_without_ground_np, projection_data))
-    return combined_data_without_ground
+    return combined_data_without_ground     # np.array(combined_data_without_ground, dtype=point_dtype)
 
 
-def remove_line_of_sight(points):
-    return points
+def remove_line_of_sight(points, camera_position_xyz):
+    # Manually extract x, y, z data from the structured array
+    xyz = np.array([points['x'], points['y'], points['z']]).T.astype(np.float64)
+
+    # Verify the shape and dtype of the xyz array
+    if xyz.shape[1] != 3 or xyz.dtype != np.float64:
+        raise ValueError("The xyz array must be of shape (n_points, 3) and dtype np.float64")
+
+    # Create an Open3D PointCloud object
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(xyz)
+
+    # Führe die Hidden Point Removal-Funktion aus
+    camera = [camera_position_xyz[0], camera_position_xyz[1], camera_position_xyz[2]]
+    radius = 100  # Radius der Sichtbarkeit um die Kameraposition. Muss eventuell angepasst werden
+    _, pt_map = pcd.hidden_point_removal(camera, radius)
+    # Konvertiere das Ergebnis zurück in ein strukturiertes NumPy-Array
+    # Indizes der sichtbaren Punkte
+    visible_indices = np.asarray(pt_map)
+    # Erstellen eines neuen strukturierten Arrays für die sichtbaren Punkte
+    visible_points_structured = np.zeros(len(visible_indices), dtype=points.dtype)
+    # Zuweisung der sichtbaren Punkte und ihrer proj_x, proj_y Werte
+    for name in points.dtype.names:
+        visible_points_structured[name] = points[name][visible_indices]
+    return visible_points_structured
+
+
+def remove_far_points(points, range_threshold=60):
+    # Calculate the distance (range) from x and y for each point
+    ranges = np.sqrt(points[:, 0] ** 2 + points[:, 1] ** 2)
+    # Filter out points where the distance is greater than the threshold
+    return points[ranges <= range_threshold]
 
 
 def group_points_by_angle(points_with_projection, eps=0.00092, min_samples=1):
@@ -92,61 +124,164 @@ def _euclidean_distance_with_raising_eps():
     pass
 
 
-def stixel_extraction(sorted_stixel):
-    stixel = []
-    return stixel
+point_dtype = np.dtype([
+    ('x', np.float64),
+    ('y', np.float64),
+    ('z', np.float64),
+    ('proj_x', np.float64),
+    ('proj_y', np.float64)
+])
 
 
-def _determine_stixel(points, cluster_labels, ranges, floor_offset=0):
-    # Initialize a dictionary to hold points for each cluster
-    clusters = {}
-    # Group points by their cluster labels
-    for point, label, range_val in zip(points, cluster_labels, ranges):
-        if label == -1:
-            continue  # Skip outliers
-        if label not in clusters:
-            clusters[label] = []
-        clusters[label].append((point, range_val))
-    # Convert clusters to a list and sort each cluster by the range
-    for label in clusters:
-        clusters[label].sort(key=lambda x: x[1])
-    # Sort clusters by their average range
-    sorted_clusters = sorted(clusters.items(), key=lambda item: np.mean([point[1] for point in item[1]]))
-    stixel = stixel_extraction(sorted_clusters)
-    return stixel
+class PositionClass(Enum):
+    BOTTOM = auto()
+    TOP = auto()
 
-def cluster_scanline(scanline_pts, eps=2, min_samples=2, metric='euclidean'):
+
+class Stixel:
+    def __init__(self, point: np.array, position_class: PositionClass, floor_offset: int = 0):
+        self.point: np.array= point
+        self.point['proj_y'] += 32
+        self.position_class: PositionClass= position_class
+        # If stixel is a bottom stixel...
+        if self.position_class == PositionClass.BOTTOM:
+            # ... apply the floor offset (in px) to proj_y
+            self.point['proj_y'] = self.point['proj_y'] - floor_offset
+
+
+class Cluster:
+    def __init__(self, points: np.array):
+        self.points: np.array = points            # Shape: x, y, z, proj_x, proj_y
+        self.mean_range: float = self.calculate_mean_range()
+        self.stixels: List[Stixel] = []
+        self.sort_points_by_z()
+
+    def calculate_mean_range(self):
+        distances = [np.sqrt(point[0]**2 + point[1]**2) for point in self.points]
+        return np.mean(distances)
+
+    def sort_points_by_z(self):
+        # Sort points by ascending z
+        self.points = sorted(self.points, key=lambda point: point[2])
+
+
+
+class Scanline:
+    def __init__(self, points: np.array):
+        self.points: np.array = points.view(dtype=point_dtype).reshape(-1)
+        self.objects: List[Cluster] = []
+        self._cluster_objects()
+        self._determine_stixel()
+
+    def _cluster_objects(self, eps=1, min_samples=1, metric='euclidean'):
+        # Compute the radial distance r
+        r_values = np.sqrt(self.points['x'] ** 2 + self.points['y'] ** 2)
+        # Sort points by r for clustering
+        sorted_indices = np.argsort(r_values)
+        sorted_r = r_values[sorted_indices]
+        sorted_z = self.points['z'][sorted_indices]
+        self.points = self.points[sorted_indices]
+        # Prepare the data for DBSCAN
+        db_data = np.column_stack((sorted_r, sorted_z))
+        # Check if enough data points are present for clustering
+        if len(db_data) > 1:
+            # Apply the DBSCAN clustering algorithm
+            db = DBSCAN(eps=eps, min_samples=min_samples, metric=metric).fit(db_data)
+            labels = db.labels_
+        else:
+            # Treat the single point as its own cluster
+            labels = np.array([0])
+        # Identify stixels by cluster
+        for label in np.unique(labels):
+            if label == -1:
+                continue  # Skip outliers
+            # Create a Cluster object for each group of points sharing the same label
+            cluster_points = self.points[labels == label]
+            self.objects.append(Cluster(cluster_points))
+        # Sort the list of Cluster objects by their mean_range
+        self.objects = sorted(self.objects, key=lambda cluster: cluster.mean_range)
+
+    def _determine_stixel(self, distance_threshold=10, x_threshold=5, extended_stixel=True):
+        previous_cluster = None
+        last_top_stixel_x = None  # Speichert die x-Position des letzten Top-Stixels
+
+        for cluster in self.objects:
+            # Add the bottom point of the first cluster or if the distance to the previous cluster is larger than the threshold
+            if previous_cluster is None or (cluster.mean_range - previous_cluster.mean_range) > distance_threshold:
+                bottom_point = cluster.points[0]  # First point after sorting by z (lowest z)
+                bottom_stixel = Stixel(point=bottom_point, position_class=PositionClass.BOTTOM)  # 0 for Bottom
+                cluster.stixels.append(bottom_stixel)
+                last_top_stixel_x = bottom_point[0]  # Aktualisiere die x-Position für die Top-Stixel-Logik
+
+            if extended_stixel:
+                # Iterate through each point in the cluster to check the x_threshold condition
+                for point in cluster.points:
+                    if last_top_stixel_x is not None and abs(point[0] - last_top_stixel_x) > x_threshold:
+                        top_stixel = Stixel(point=point, position_class=PositionClass.TOP)  # 1 for Top
+                        cluster.stixels.append(top_stixel)
+                        last_top_stixel_x = point[0]  # Update the x position for the next iteration
+
+            # Add the top point of every cluster as a top stixel
+            top_point = cluster.points[-1]  # Last point after sorting by z (highest z)
+            top_stixel = Stixel(point=top_point, position_class=PositionClass.TOP)  # 1 for Top
+            cluster.stixels.append(top_stixel)
+            last_top_stixel_x = top_point[0]  # Update the x position for the next iteration
+
+            # Update the previous cluster to the current one
+            previous_cluster = cluster
+
+    def get_stixels(self):
+        stixels = [
+            stixel for cluster in self.objects
+            for stixel in cluster.stixels
+        ]
+        return stixels
+
+    def get_bottom_stixels(self) -> List[Stixel]:
+        # Extract bottom stixels from all clusters using a list comprehension
+        bottom_stixels = [
+            stixel.point for cluster in self.objects
+            for stixel in cluster.stixels
+            if stixel.position_class == PositionClass.BOTTOM
+        ]
+        return np.asarray(bottom_stixels)
+
+    def get_top_stixels(self) -> List[Stixel]:
+        # Extract bottom stixels from all clusters using a list comprehension
+        top_stixels = [
+            stixel.point for cluster in self.objects
+            for stixel in cluster.stixels
+            if stixel.position_class == PositionClass.TOP
+        ]
+        return np.asarray(top_stixels)
+
+
+def force_stixel_into_image_grid(stixels, grid_step=8):
     """
-    Applies DBSCAN clustering to scanline points, grouping points that are close in the
-    euclidean sense (or another specified metric) into stixels.
-
-    :param scanline_pts: A numpy array of scanline points (x, y, z).
-    :param eps: The maximum distance between two points to be considered as in the same cluster.
-    :param min_samples: The minimum number of points in a neighborhood for a point to be considered a core point.
-    :param metric: The distance metric to use for DBSCAN.
-    :return: A numpy array representing stixels, which are the grouped points.
+    Forces all given stixel into the output grid.
+    Args:
+        stixel_by_view:
+        grid_step:
+    Returns: a list of views with grid stixel
     """
-    # Extract the x, y, and z values
-    x_values = scanline_pts[:, 0]
-    y_values = scanline_pts[:, 1]
-    z_values = scanline_pts[:, 2]
-    # Compute the radial distance r
-    r_values = np.sqrt(x_values ** 2 + y_values ** 2)
-    # Sort points by r for clustering
-    sorted_indices = np.argsort(r_values)
-    sorted_r = r_values[sorted_indices]
-    sorted_z = z_values[sorted_indices]
-    sorted_scanline_pts = scanline_pts[sorted_indices]
-    # Prepare the data for DBSCAN
-    db_data = np.column_stack((sorted_r, sorted_z))
-    # Check if enough data points are present for clustering
-    if len(db_data) > 1:
-        # Apply the DBSCAN clustering algorithm
-        db = DBSCAN(eps=eps, min_samples=min_samples, metric=metric).fit(db_data)
-        labels = db.labels_
-    else:
-        # Treat the single point as its own cluster
-        labels = np.array([0])
-    # Identify stixels by cluster
-    stixels = _determine_stixel(sorted_scanline_pts, labels, sorted_r)
+    stixels = [item for sublist in stixels for item in sublist]
+    #stacked_stixel = np.vstack(view_stixel)
+    for stixel in stixels:
+        stixel.point['proj_x'] = normalize_into_grid(stixel.point['proj_x'], step=grid_step)
+        if stixel.point['proj_x'] == 1920:
+            stixel.point['proj_x'] = 1912
+        stixel.point['proj_y'] = normalize_into_grid(stixel.point['proj_y'], step=grid_step)
+        if stixel.point['proj_y'] == 1280:
+            stixel.point['proj_y'] = 1272
     return stixels
+
+
+def normalize_into_grid(pos, step=8, offset=0):
+    val_norm = 0
+    rest = pos % step
+    if rest > step / 2:
+        val_norm = pos + (step - rest)
+    else:
+        val_norm = pos - rest
+    assert val_norm % step == 0
+    return val_norm + offset

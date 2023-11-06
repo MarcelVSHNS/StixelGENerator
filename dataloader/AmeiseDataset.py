@@ -51,7 +51,7 @@ class AmeiseDataLoader:
         return len(self.ameise_record_map)
 
 class AmeiseData(ad.data.Frame):
-    def __init__(self, ad_frame: ad.data.Frame, ad_info, name):
+    def __init__(self, ad_frame: ad.data.Frame, ad_info: ad.data.Infos, name):
         """
         Base class for data from waymo open dataset
         Args:
@@ -61,6 +61,7 @@ class AmeiseData(ad.data.Frame):
         """
         super().__init__(ad_frame.frame_id, timestamp=ad_frame.timestamp)
         self.cameras: List[ad.data.Image] = ad_frame.cameras
+        self.stereo_left_posi = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
         self.lidar: List[ad.data.Points] = ad_frame.lidar
         self.image_points = [[] for _ in range(4)]
         self.name = name

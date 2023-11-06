@@ -10,7 +10,7 @@ from os.path import basename
 from datetime import datetime
 
 from libraries.pointcloudlib import get_stixel_from_laser_data
-from libraries.pointcloudlib import force_stixel_into_image_grid
+import libraries.pointcloudlib2 as pl2
 
 # open Config
 with open('config.yaml') as yamlfile:
@@ -47,7 +47,7 @@ def main():
         print("Thread is working ...")
     for thread in threads:
         thread.join()
-    create_sample_map()
+    # create_sample_map()
     # create_zip_chunks()
     overall_time = datetime.now() - overall_start_time
     print("Finished! in {}".format(overall_time))
@@ -82,8 +82,20 @@ def thread__generate_data_from_tfrecord_chunk(index_list, dataloader):
             for camera_view in config['cameras_to_use']:
                 export_single_dataset(frame=frame,
                                       stixels=training_data[0],
-                                      name=f"{frame.name}-{frame_num}-{camera_view}")
+                                      name=f"{frame.name}-{frame_num}-{camera_view}")      
             """
+            laser_points = frame.image_points[1]
+            laser_points = pl2.remove_far_points(laser_points)
+            laser_points = pl2.remove_ground(laser_points)
+            laser_points, angles = pl2.group_points_by_angle(laser_points)
+            stixel = []
+            for scanline in laser_points:
+                scanline_obj = pl2.Scanline(scanline)
+                stixel.append(scanline_obj.get_stixels())
+            grid_stixel = pl2.force_stixel_into_image_grid(stixel)
+            export_single_dataset(frame=frame,
+                                  stixels=grid_stixel,
+                                  name=f"{frame.name}-{frame_num}-{1}")
             frame_num += 1
         print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
@@ -95,6 +107,7 @@ def export_single_dataset(frame, stixels, name):
     base_path = os.path.join(config['data_path'], config['phase'])
     label_path = os.path.join(base_path, config['targets'])
     # save image
+    """
     os.makedirs(base_path, exist_ok=True)
     if dataset_to_use == 'ameise':
         left_img_path = os.path.join(base_path, Camera.get_name_by_value(view))
@@ -105,11 +118,13 @@ def export_single_dataset(frame, stixels, name):
         frame.cameras[Camera.STEREO_RIGHT].image.save(os.path.join(right_img_path, name + ".png"))
     else:
         frame.cameras[view].image.save(os.path.join(base_path, name + ".png"))
+    """
     # create gt line
     target_list = []
     for stixel in stixels:
-        depth = math.sqrt(math.pow(stixel[0], 2) + math.pow(stixel[1], 2))
-        target_list.append([f"{config['phase']}/{name}.png", int(stixel[3]), int(stixel[4]), int(0.0), round(depth, 1)])
+        posi = 1 if stixel.position_class == pl2.PositionClass.BOTTOM else 2
+        depth = math.sqrt(math.pow(stixel.point['x'], 2) + math.pow(stixel.point['y'], 2))
+        target_list.append([f"{config['phase']}/{name}.png", int(stixel.point['proj_x']), int(stixel.point['proj_y']), int(posi), round(depth, 1)])
     target = pd.DataFrame(target_list)
     target.columns = ['img_path', 'x', 'y', 'class', 'depth']
     os.makedirs(label_path, exist_ok=True)

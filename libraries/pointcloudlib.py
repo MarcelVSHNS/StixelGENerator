@@ -285,6 +285,7 @@ def force_stixel_into_image_grid(stixel_by_view, grid_step=8):
     return grid_stixel_by_view
 
 
+
 def normalize_into_grid(pos, step=8, offset=0):
     val_norm = 0
     rest = pos % step

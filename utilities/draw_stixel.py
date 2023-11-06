@@ -1,47 +1,46 @@
-import cv2
 import os
+import pandas as pd
 import matplotlib.pyplot as plt
-import yaml
+import matplotlib.image as mpimg
 
-"""
-    TODO:
-    - read a folder with e.g. training data, continue with >return<
-    - read the fitting stixel from one file
-"""
 
-wantToSave = False
-os.chdir('..')
-with open('config.yaml') as yamlfile:
-    config = yaml.load(yamlfile, Loader=yaml.FullLoader)
-stixelWidth = config['stixel']['width']
-stixelHeight = config['stixel']['height']
-path = "dataset_validation"
-thickness = 1
-idx_list = [1,2,3]
-image_list = [f for f in os.listdir(path) if f.endswith('.png')]
-
-for idx in idx_list:
-    img = cv2.imread(os.path.join(path, image_list[idx]))
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    fig = plt.figure(figsize=(20, 12))
-
-    color = (0, 255, 0)
-    f = open(os.path.join(path, "single_stixel_pos", os.path.splitext(image_list[idx])[0] + ".txt"), "r")
-    stixel = f.readlines()
-
-    # gts means groundTruthStixel
-    for gts in stixel:
-        x = int(gts.split()[1])
-        y = int(gts.split()[2])
-        # starts top left corner
-        start_point = (x, y-stixelHeight)
-        # ends bottom right corner
-        end_point = (x+stixelWidth, y)
-        img = cv2.rectangle(img, start_point, end_point, color, thickness)
-
-    plt.imshow(img)
+def plot_points_on_image(csv_file_path, image_path):
+    # Load the points from the CSV file
+    points = pd.read_csv(csv_file_path)
+    # Load the image
+    image = mpimg.imread(image_path)
+    # Normalize the depth values to match the 'viridis' color map range
+    depth_normalized = (points['depth'] - points['depth'].min()) / (points['depth'].max() - points['depth'].min())
+    # Plot the image
+    plt.figure(figsize=(20, 12))
+    plt.imshow(image)
+    # Scatter plot of the points with the normalized depth values as color reference
+    # Adjust size and alpha for the points
+    sc = plt.scatter(points['x'], points['y'], c=depth_normalized, cmap='viridis', alpha=0.7, s=10)
+    # Adding color bar as legend for the depth
+    cbar = plt.colorbar(sc)
+    cbar.set_label('Depth')
+    # Remove the axis for better visualization
+    plt.axis('off')
+    # Show the image and wait until a key is pressed
     plt.show()
 
-    if wantToSave:
-        cv2.imwrite("result/" + os.path.splitext(image_list[idx])[0] + "-result.png", img)
+# Define file paths
+datapath = "C:\\Users\\marce\\Documents\\dataset"
+images_path = os.path.join(datapath, "STEREO_LEFT")
+targets_path = os.path.join(datapath, "targets_from_lidar")
+file_map = []
+# Durchlaufe alle Dateien im angegebenen Ordner
+for filename in os.listdir(images_path):
+    if filename.endswith('.png'):  # Prüfe, ob die Datei eine .png-Datei ist
+        # Füge den Dateinamen ohne die .png-Endung der Liste hinzu
+        file_map.append(os.path.splitext(filename)[0])
+
+print(f'Found {len(file_map)}')
+
+for file in file_map:
+    csv_file_path = os.path.join(targets_path, file + ".csv")
+    image_path = os.path.join(images_path, file + ".png")
+    # output_image_path = 'path_to_save_annotated_image.png'
+    plot_points_on_image(csv_file_path, image_path)
 

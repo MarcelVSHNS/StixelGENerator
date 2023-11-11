@@ -32,7 +32,7 @@ def main():
     process_workload: int = int(len(dataset) / config['num_threads'])
     assert process_workload > 0, "Too less files for num_threads"
     # distribution of idx over the threads
-    dataset_chunk: List[List[int]] = list(chunks(list(range(len(dataset))), process_workload))
+    dataset_chunk: List[List[int]] = list(_chunks(list(range(len(dataset))), process_workload))
     processes: List[Process] = []
     for file_index_list in dataset_chunk:
         # create thread with arg dataset_list (chunk)
@@ -66,28 +66,29 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
                 column: Scanline = Scanline(laser_points_by_angle)
                 stixel.append(column.get_stixels())                     # calculate stixel
             grid_stixel: List[Stixel] = force_stixel_into_image_grid(stixel, dataloader.img_size)
-            export_single_dataset(image_left=frame.image,
-                                  image_right=frame.image_right,
-                                  stixels=grid_stixel,
-                                  name=frame.name)
+            _export_single_dataset(image_left=frame.image,
+                                   image_right=frame.image_right if dataloader.stereo_available else None,
+                                   stixels=grid_stixel,
+                                   name=frame.name)
             frame_num += 1
         print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
         print("Time elapsed: {}".format(step_time))
 
 
-def export_single_dataset(image_left: Image, image_right: Image, stixels: List[Stixel], name: str):
+def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, image_right: Image = None):
     # define paths
     base_path: str = os.path.join(config['data_path'], config['phase'])
     left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
     label_path = os.path.join(base_path, config['targets'])
     os.makedirs(left_img_path, exist_ok=True)
-    os.makedirs(right_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     # save images
     image_left.save(os.path.join(left_img_path, name + ".png"))
-    image_right.save(os.path.join(right_img_path, name + ".png"))
+    if image_right is not None:
+        os.makedirs(right_img_path, exist_ok=True)
+        image_right.save(os.path.join(right_img_path, name + ".png"))
     # create .csv
     target_list = []
     for stixel in stixels:
@@ -100,13 +101,13 @@ def export_single_dataset(image_left: Image, image_right: Image, stixels: List[S
     target.to_csv(os.path.join(label_path, name+".csv"), index=False)
 
 
-def chunks(lst, n) -> List[List[int]]:
+def _chunks(lst, n) -> List[List[int]]:
     """Yield successive n-sized chunks from lst."""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
 
-def create_zip_chunks():
+def _create_zip_chunks():
     output_path = os.path.join(os.getcwd(), config['data_path'], config['phase'] + "_compressed")
     input_image_path = os.path.join(os.getcwd(), config['data_path'], config['phase'])
     input_annotations_path = os.path.join(input_image_path, "targets")
@@ -120,7 +121,7 @@ def create_zip_chunks():
     img_folder_list = os.listdir(input_image_path)
     image_list = [f for f in img_folder_list if f.endswith('.png')]
     n_sized = int(len(image_list) / num_packages)
-    image_chunks = chunks(image_list, n_sized)
+    image_chunks = _chunks(image_list, n_sized)
     annotZip = ZipFile(os.path.join(output_path, phase + '_' + data_set + '_compressed_annotations_' + '.zip'), 'w')
 
     n = 0
@@ -129,10 +130,10 @@ def create_zip_chunks():
         with ZipFile(os.path.join(output_path, phase + '_' + data_set + '_compressed_' + str(n) + '.zip'), 'w') as zipObj:
             for img in img_list:
                 # create complete filepath of file in directory
-                file_path = os.path.join(input_image_path, img)
+                file_path = os.path.join(input_image_path, str(img))
                 zipObj.write(file_path, basename(file_path))
                 if single_stixel_pos_export:
-                    annot = os.path.splitext(img)[0] + '.csv'
+                    annot = os.path.splitext(str(img))[0] + '.csv'
                     annot_file_path = os.path.join(input_annotations_path, annot)
                     annotZip.write(annot_file_path, basename(annot_file_path))
         n += 1

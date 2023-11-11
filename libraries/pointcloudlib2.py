@@ -271,8 +271,8 @@ def force_stixel_into_image_grid(stixels, grid_step=8):
         if stixel.point['proj_x'] == 1920:
             stixel.point['proj_x'] = 1912
         stixel.point['proj_y'] = normalize_into_grid(stixel.point['proj_y'], step=grid_step)
-        if stixel.point['proj_y'] == 1280:
-            stixel.point['proj_y'] = 1272
+        if stixel.point['proj_y'] == 1200:
+            stixel.point['proj_y'] = 1192
     return stixels
 
 

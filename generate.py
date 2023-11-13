@@ -2,7 +2,7 @@ import os
 import math
 import yaml
 from PIL import Image
-from multiprocessing import Process
+from threading import Thread
 import pandas as pd
 import numpy as np
 from typing import List, Tuple
@@ -18,25 +18,21 @@ from libraries import (remove_far_points, remove_ground, group_points_by_angle, 
 # open Config
 with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
-data_dir = config['raw_data_path'] + config['phase']
-dataset_to_use = config['selected_dataset']
-
 overall_start_time = datetime.now()
 
 
 def main():
     # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
     #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
-    dataset: Dataset = Dataset(data_dir=data_dir, first_only=False)
-
+    dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=True)
     process_workload: int = int(len(dataset) / config['num_threads'])
     assert process_workload > 0, "Too less files for num_threads"
     # distribution of idx over the threads
     dataset_chunk: List[List[int]] = list(_chunks(list(range(len(dataset))), process_workload))
-    processes: List[Process] = []
+    processes: List[Thread] = []
     for file_index_list in dataset_chunk:
         # create thread with arg dataset_list (chunk)
-        x: Process = Process(target=_generate_data_from_record_chunk, args=(file_index_list, dataset))
+        x: Thread = Thread(target=_generate_data_from_record_chunk, args=(file_index_list, dataset))
         processes.append(x)
         x.start()
         print("Process is working ...")
@@ -58,17 +54,18 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
             break
         for frame in data_chunk:
             # generate stixel
-            laser_points: np.array = remove_far_points(frame.points)    # delete far points
-            laser_points = remove_ground(laser_points)                  # delete floor
-            laser_points = group_points_by_angle(laser_points)          # find columns
+            laser_points: np.array = remove_far_points(frame.points)                # delete far points
+            lp_without_ground = remove_ground(laser_points)                         # delete floor
+            lp_wg_ordered_by_angle = group_points_by_angle(lp_without_ground)       # find columns
             stixel: List[List[Stixel]] = []
-            for laser_points_by_angle in laser_points:
+            for laser_points_by_angle in lp_wg_ordered_by_angle:
                 column: Scanline = Scanline(laser_points_by_angle)
                 stixel.append(column.get_stixels())                     # calculate stixel
             grid_stixel: List[Stixel] = force_stixel_into_image_grid(stixel, dataloader.img_size)
             _export_single_dataset(image_left=frame.image,
                                    image_right=frame.image_right if dataloader.stereo_available else None,
                                    stixels=grid_stixel,
+                                   dataset_name=dataloader.name,
                                    name=frame.name)
             frame_num += 1
         print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
@@ -76,12 +73,13 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
         print("Time elapsed: {}".format(step_time))
 
 
-def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, image_right: Image = None):
+def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, image_right: Image = None):
     # define paths
-    base_path: str = os.path.join(config['data_path'], config['phase'])
+    base_path = os.path.join(config['data_path'], dataset_name, config['phase'])
+    os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
-    label_path = os.path.join(base_path, config['targets'])
+    label_path = os.path.join(base_path, "targets_from_lidar")
     os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     # save images
@@ -90,9 +88,10 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
         os.makedirs(right_img_path, exist_ok=True)
         image_right.save(os.path.join(right_img_path, name + ".png"))
     # create .csv
+    test = PositionClass.BOTTOM
     target_list = []
     for stixel in stixels:
-        stixel_class: int = 1 if stixel.position_class == PositionClass.BOTTOM else 2
+        stixel_class: int = stixel.position_class.value
         depth: float = math.sqrt(math.pow(stixel.point['x'], 2) + math.pow(stixel.point['y'], 2))
         target_list.append([f"{config['phase']}/{name}.png", int(stixel.point['proj_x']), int(stixel.point['proj_y']), int(stixel_class), round(depth, 1)])
     target: pd.DataFrame = pd.DataFrame(target_list)
@@ -108,6 +107,7 @@ def _chunks(lst, n) -> List[List[int]]:
 
 
 def _create_zip_chunks():
+    # TODO: not ready yet!!
     output_path = os.path.join(os.getcwd(), config['data_path'], config['phase'] + "_compressed")
     input_image_path = os.path.join(os.getcwd(), config['data_path'], config['phase'])
     input_annotations_path = os.path.join(input_image_path, "targets")

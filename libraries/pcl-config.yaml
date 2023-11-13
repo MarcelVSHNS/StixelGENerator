@@ -1,0 +1,20 @@
+rm_gnd:
+  z_max: -1.0
+  distance_threshold: 0.16
+  ransac_n: 5
+  num_iterations: 10000
+rm_far_pts:
+  range_threshold: 63.0
+group_angle:
+  eps: 0.00092
+  min_samples: 1
+stixel:
+  proj_y_offset: 32
+  ground_offset: 6
+scanline_cluster_obj:
+  min_samples: 2
+  clustering_factor: 0.08
+  clustering_offset: 0.0
+scanline_determine_stixel:
+  x_threshold: 0.2
+

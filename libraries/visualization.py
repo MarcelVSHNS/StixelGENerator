@@ -1,8 +1,18 @@
-import math
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple
+from libraries import PositionClass
+import cv2
+
+colors = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (0, 255, 0), (0, 255, 255),
+          (0, 0, 255), (255, 0, 255)]
+
+stixel_colors = {
+    PositionClass.BOTTOM: (0, 0, 0),  # black
+    PositionClass.OBJECT: (96, 96, 96),  # dark grey
+    PositionClass.TOP: (150, 150, 150)  # grey
+}
 
 
 def plot_z_over_range(point_lists: List[np.array], colors: List[str], labels: List[str] = None):
@@ -55,3 +65,79 @@ def extract_points_colors_labels(scanline_obj):
         colors_list.append(color)
         labels_list.append(f'Cluster {idx + 1}')
     return points_list, colors_list, labels_list
+
+def draw_stixels_on_image(image, stixels):
+    for stixel in stixels:
+        # Extrahieren Sie die projizierten Koordinaten
+        proj_x, proj_y = stixel.point['proj_x'], stixel.point['proj_y']
+        # Wählen Sie die Farbe basierend auf der PositionClass
+        color = stixel_colors[stixel.position_class]
+        # Zeichnen eines Punktes/Kreises auf das Bild
+        cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+    return Image.fromarray(image)
+
+
+def calculate_distance(point):
+    return np.sqrt(point['x']**2 + point['y']**2 + point['z']**2)
+
+
+def draw_points_on_image(image, points, y_offset=32):
+    # Farbdefinitionen
+    distances = [calculate_distance(point) for point in points]
+    max_distance = max(distances)
+    cmap = plt.get_cmap('viridis')
+    for point, distance in zip(points, distances):
+        # Normalisiere die Entfernung für die Farbkarte
+        normalized_distance = distance / max_distance
+        # Wandle die normalisierte Entfernung in eine RGBA-Farbe um
+        color = cmap(normalized_distance)[:3]  # Konvertiere zu RGB
+        color = [int(c * 255) for c in color]  # Skaliere auf 0-255
+        # Zeichne den Punkt
+        proj_x, proj_y = point['proj_x'], point['proj_y'] + y_offset
+        cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+    return Image.fromarray(image)
+
+def draw_clustered_points_on_image(image, cluster_list, y_offset=32):
+    for i, cluster_points in enumerate(cluster_list):
+        color = colors[i % len(colors)]
+        for point in cluster_points:
+            proj_x, proj_y = point['proj_x'], point['proj_y'] + y_offset
+            cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+    return Image.fromarray(image)
+
+def draw_obj_points_on_image(image, objects, stixels=None, y_offset=32):
+    for i, cluster_points in enumerate(objects):
+        color = colors[i % len(colors)]
+        for point in cluster_points.points:
+            proj_x, proj_y = point['proj_x'], point['proj_y'] + y_offset
+            cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+    if stixels is not None:
+        for stixel in stixels:
+            # Extrahieren Sie die projizierten Koordinaten
+            proj_x, proj_y = stixel.point['proj_x'], stixel.point['proj_y']
+            # Wählen Sie die Farbe basierend auf der PositionClass
+            color = stixel_colors[stixel.position_class]
+            # Zeichnen eines Punktes/Kreises auf das Bild
+            cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+    return Image.fromarray(image)
+
+def draw_obj_points_2d(objects, stixels=None):
+    plt.figure(figsize=(12, 8))
+    xs = []
+    ys = []
+    c = []
+    for i, cluster_points in enumerate(objects):
+        color = colors[i % len(colors)]
+        for point in cluster_points.points:
+            xs.append(np.sqrt(point['x']**2 + point['y']**2))
+            ys.append(point['z'])
+            c.append(tuple(val / 255 for val in color))
+    if stixels is not None:
+        for stixel in stixels:
+            xs.append(np.sqrt(stixel.point['x'] ** 2 + stixel.point['y'] ** 2))
+            ys.append(stixel.point['z'])
+            color = stixel_colors[stixel.position_class]
+            c.append(tuple(val / 255 for val in color))
+    plt.scatter(xs, ys, c=c, s=20)
+    plt.grid(True)
+    plt.show()

@@ -2,16 +2,15 @@ import tensorflow as tf
 import numpy as np
 import os
 import glob
-import open3d as o3d
-from datetime import datetime
 from typing import List, Tuple
 from waymo_open_dataset import dataset_pb2 as open_dataset
 from waymo_open_dataset.utils import frame_utils
 from PIL import Image
+from libraries.names import point_dtype
 
 
 class WaymoDataLoader:
-    def __init__(self, data_dir, camera_segmentation_only=False, first_only=True):
+    def __init__(self, data_dir: str, phase: str, camera_segmentation_only=False, first_only=True):
         """
         Loads a full set of waymo data in single frames, can be one tf_record file or a folder of  tf_record files.
         provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
@@ -25,10 +24,11 @@ class WaymoDataLoader:
             camera_segmentation_only: if True, loads only frames with available camera segmentation
             first_only: doesn't load the full ~20 frames to return a data sample if True
         """
-        self.data_dir = data_dir
-        self.camera_segmentation_only = camera_segmentation_only
-        self.first_only = first_only
-        self.img_size: Tuple[int, int] = (1920, 1280)
+        self.name: str = "waymo-open-dataset"
+        self.data_dir = os.path.join(data_dir, "ameise", phase)
+        self.camera_segmentation_only: bool = camera_segmentation_only
+        self.first_only: bool = first_only
+        self.img_size = {'width': 1920, 'height': 1280}
         self.stereo_available: bool = False
         # find files in folder (data_dir) which fit to pattern endswith-'.tfrecord'
         self.tfrecord_map = glob.glob(os.path.join(self.data_dir, '*.tfrecord'))
@@ -39,7 +39,8 @@ class WaymoDataLoader:
         waymo_data_chunk = []
         for tf_frame in frames:
             # start_time = datetime.now()
-            waymo_data_chunk.append(WaymoData(tf_frame, camera_segmentation_only=self.camera_segmentation_only))
+            waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
+                                              camera_segmentation_only=self.camera_segmentation_only))
             # self.object_creation_time = datetime.now() - start_time
             if self.first_only:
                 break
@@ -82,17 +83,17 @@ class WaymoData:
             camera_segmentation_only:
         """
         # Base declaration
-        self.image = tf_frame.images[CameraName.Name.FRONT]
+        images = sorted(tf_frame.images, key=lambda i: i.name)
+        self.image = Image.fromarray(tf.image.decode_jpeg(images[0].image).numpy())     # Front image
         self.image_right = None     # Safety dummy
         self.pov: np.array = np.array([])
         self.points: np.array = np.array([])
         self.name: str = tf_frame.context.name
         self.camera_segmentation_only: bool = camera_segmentation_only
 
-        self.frame: tf.data.TFRecordDataset = tf_frame
+        self.frame: open_dataset.Frame = tf_frame
         # Transformations
         self.top_lidar_points_slices(tf_frame)  # Apply laser transformation
-        self.convert_image_to_pil()  # Apply image transformation
         # TODO: Future Add-On
         if self.camera_segmentation_only:
             self.camera_labels, self.camera_instance_labels = None, None
@@ -116,21 +117,15 @@ class WaymoData:
         # 3d points in vehicle frame, just pick Top LiDAR
         laser_points = points[0]
         laser_projection_points = tf.constant(cp_points[0], dtype=tf.int32)
-        # images = sorted(frame.images, key=lambda i: i.name)
+        images = sorted(frame.images, key=lambda i: i.name)
         # define mask where the projections equal the picture view
         # (0 = Front, 1 = Side_left, 2 = Side_right, 3 = Left, 4 = Right)
         # cp_points_all_tensor[..., 0] while 0 means cameraName.name (first projection)
         # for view in range(len(images)):
         # Create mask from image
-        mask = tf.equal(laser_projection_points[..., 0], self.image.name)
+        mask = tf.equal(laser_projection_points[..., 0], images[0].name)
         # transform points after slicing it from the mask into float values
         laser_points_view = tf.gather_nd(laser_points, tf.where(mask)).numpy()
         laser_camera_projections_view = tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy()
         concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3]))
-        self.points = concatenated_laser_pts
-
-    def convert_image_to_pil(self):
-        # images = sorted(frame_images, key=lambda i: i.name)
-        # for image in images:
-        #     self.cameras.append(Image.fromarray(tf.image.decode_jpeg(image.image).numpy()))
-        self.image = Image.fromarray(tf.image.decode_jpeg(self.image.image).numpy())
+        self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)

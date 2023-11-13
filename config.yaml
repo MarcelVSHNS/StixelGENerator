@@ -2,12 +2,11 @@ phase: training
 # testing
 # training
 # validation
-data_path: /home/marcel/datasets/ameise_okt23_2/
-targets: targets_from_lidar
-raw_data_path: /media/marcel/Data1/ameise/
+data_path: /home/marcel/datasets/
+raw_data_path: /media/marcel/Data1/Raw/
 # /media/marcel/Data1/
 # raw/
-explore_data: False
+explore_data: True
 exploring:
   view: 1
   random_idx: False
@@ -16,10 +15,7 @@ exploring:
   col: 180
 explore_data_deep: False
 num_views: 3
-num_threads: 4
-dataset_name: ameise-test
+num_threads: 1
 num_zips_training: 15
 num_zips_validation: 3
 num_zips_testing: 3
-selected_dataset: ameise
-cameras_to_use: [1]

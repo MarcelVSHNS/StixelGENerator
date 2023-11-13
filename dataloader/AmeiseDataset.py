@@ -6,7 +6,7 @@ import os
 import numpy as np
 from PIL import Image
 
-from libraries import point_dtype
+from libraries.names import point_dtype
 
 
 class AmeiseData:
@@ -18,24 +18,18 @@ class AmeiseData:
             ad_info:
             name:
         """
-        self.image: Image = ad_frame.cameras[Camera.STEREO_RIGHT].image
-        self.image_right: Image = ad_frame.cameras[Camera.STEREO_RIGHT].image
-        self.pov: np.array = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
-        self.points: np.array = self.point_slices()
         self.name: str = name
-
         self.frame: ad.data.Frame = ad_frame
         self.frame_info: ad.data.Infos = ad_info
+        self.image: Image = ad.utils.transformation.rectify_image(image=self.frame.cameras[Camera.STEREO_LEFT],
+                                                                  camera_information=self.frame_info.cameras[Camera.STEREO_LEFT],
+                                                                  crop=True)
+        self.image_right: Image = ad.utils.transformation.rectify_image(image=self.frame.cameras[Camera.STEREO_RIGHT],
+                                                                        camera_information=self.frame_info.cameras[Camera.STEREO_RIGHT],
+                                                                        crop=True)
+        self.pov: np.array = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
+        self.points: np.array = self.point_slices()
         # transformation
-        self.rectify_images()
-
-    def rectify_images(self):
-        self.image = ad.utils.transformation.rectify_image(image=self.image,
-                                                           camera_information=self.frame_info.cameras[Camera.STEREO_LEFT],
-                                                           crop=True)
-        self.image_right = ad.utils.transformation.rectify_image(image=self.image_right,
-                                                                 camera_information=self.frame_info.cameras[Camera.STEREO_RIGHT],
-                                                                 crop=True)
 
     def point_slices(self) -> np.array:
         pts, projection = ad.utils.transformation.get_projection_matrix(pcloud=self.frame.lidar[Lidar.OS1_TOP].points,
@@ -44,11 +38,11 @@ class AmeiseData:
         projection_list = np.array(projection)
         pts_coordinates = np.array(list(zip(pts['x'], pts['y'], pts['z'])))
         combined_data = np.hstack((pts_coordinates, projection_list))
-        return combined_data.astype(point_dtype)   # x, y, z, proj_x, proj_y
+        return np.array([tuple(row) for row in combined_data], dtype=point_dtype)   # x, y, z, proj_x, proj_y
 
 
 class AmeiseDataLoader:
-    def __init__(self, data_dir: str, first_only: bool = False):
+    def __init__(self, data_dir: str, phase: str, first_only: bool = False):
         """
         Loads a full set of ameise data in single frames, can be one .4mse file or a folder of .4mse files.
         provides a list by index for a .4mse-file which has ~50 frame objects. Every object has lists of
@@ -61,10 +55,11 @@ class AmeiseDataLoader:
             data_dir: specify the location of the tf_records
             first_only: doesn't load the full ~20 frames to return a data sample if True
         """
-        self.data_dir = data_dir
+        self.name: str = "ameise-dataset"
+        self.data_dir = os.path.join(data_dir, "ameise", phase)
         self.ameise_record_map: List[str] = glob.glob(os.path.join(self.data_dir, '*.4mse'))
         self.first_only: bool = first_only
-        self.img_size: Tuple[int, int] = (1920, 1200)
+        self.img_size = {'width': 1920, 'height': 1200}
         self.stereo_available: bool = True
         print(f"Found {len(self.ameise_record_map)} Ameise record files.")
 

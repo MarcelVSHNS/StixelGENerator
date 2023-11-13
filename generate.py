@@ -24,7 +24,7 @@ overall_start_time = datetime.now()
 def main():
     # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
     #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
-    dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=True)
+    dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=False)
     process_workload: int = int(len(dataset) / config['num_threads'])
     assert process_workload > 0, "Too less files for num_threads"
     # distribution of idx over the threads
@@ -54,9 +54,10 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
             break
         for frame in data_chunk:
             # generate stixel
-            laser_points: np.array = remove_far_points(frame.points)                # delete far points
-            lp_without_ground = remove_ground(laser_points)                         # delete floor
-            lp_wg_ordered_by_angle = group_points_by_angle(lp_without_ground)       # find columns
+                            # delete far points
+            lp_without_ground = remove_ground(frame.points)
+            lp_without_far_pts: np.array = remove_far_points(lp_without_ground)
+            lp_wg_ordered_by_angle = group_points_by_angle(lp_without_far_pts)
             stixel: List[List[Stixel]] = []
             for laser_points_by_angle in lp_wg_ordered_by_angle:
                 column: Scanline = Scanline(laser_points_by_angle)

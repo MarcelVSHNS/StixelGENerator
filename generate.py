@@ -13,7 +13,7 @@ from datetime import datetime
 # change xxxDataLoader to select the dataset
 from dataloader import AmeiseDataLoader as Dataset, AmeiseData as Data
 from libraries import (remove_far_points, remove_ground, group_points_by_angle, Scanline, force_stixel_into_image_grid,
-                       PositionClass, Stixel)
+                       PositionClass, Stixel, remove_line_of_sight)
 
 # open Config
 with open('config.yaml') as yaml_file:
@@ -53,11 +53,10 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
         if data_chunk is None:
             break
         for frame in data_chunk:
-            # generate stixel
-                            # delete far points
             lp_without_ground = remove_ground(frame.points)
             lp_without_far_pts: np.array = remove_far_points(lp_without_ground)
-            lp_wg_ordered_by_angle = group_points_by_angle(lp_without_far_pts)
+            lp_without_los = remove_line_of_sight(lp_without_far_pts, frame.camera_pov)
+            lp_wg_ordered_by_angle = group_points_by_angle(lp_without_los)
             stixel: List[List[Stixel]] = []
             for laser_points_by_angle in lp_wg_ordered_by_angle:
                 column: Scanline = Scanline(laser_points_by_angle)

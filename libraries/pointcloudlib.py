@@ -40,25 +40,21 @@ def remove_ground(points: np.array) -> np.array:
     return filtered_points
 
 
-def remove_line_of_sight(points: np.array, camera_position_xyz: np.array) -> np.array:
-    # TODO: implement and test!!!
+def remove_line_of_sight(points: np.array, camera_pose=None) :
     # Manually extract x, y, z data from the structured array
-    xyz = np.vstack((points['x'], points['y'], points['z'])).T
     pcd = o3d.geometry.PointCloud()
+    xyz = np.vstack((points['x'], points['y'], points['z'])).T
     pcd.points = o3d.utility.Vector3dVector(xyz)
-    # Führe die Hidden Point Removal-Funktion aus
-    camera = [camera_position_xyz[0], camera_position_xyz[1], camera_position_xyz[2]]
-    radius = 100  # Radius der Sichtbarkeit um die Kameraposition. Muss eventuell angepasst werden
-    _, pt_map = pcd.hidden_point_removal(camera, radius)
-    # Konvertiere das Ergebnis zurück in ein strukturiertes NumPy-Array
-    # Indizes der sichtbaren Punkte
-    visible_indices = np.asarray(pt_map)
-    # Erstellen eines neuen strukturierten Arrays für die sichtbaren Punkte
-    visible_points_structured = np.zeros(len(visible_indices), dtype=points.dtype)
-    # Zuweisung der sichtbaren Punkte und ihrer proj_x, proj_y Werte
-    for name in points.dtype.names:
-        visible_points_structured[name] = points[name][visible_indices]
-    return visible_points_structured
+    if camera_pose is None:
+        camera_pose = [config['rm_los']['x'],
+                  config['rm_los']['y'],
+                  config['rm_los']['z']]
+    radius = config['rm_los']['radius']
+    _, pt_map = pcd.hidden_point_removal(camera_pose, radius)
+    mask = np.zeros(len(np.asarray(points)), dtype=bool)
+    mask[pt_map] = True
+    filtered_points = points[mask]
+    return filtered_points
 
 
 def remove_far_points(points: np.array) -> np.array:
@@ -109,18 +105,21 @@ class Stixel:
         if self.position_class == PositionClass.BOTTOM:
             # ... apply the floor offset (in px) to proj_y
             range = np.sqrt(self.point['x']**2 + self.point['y']**2)
-            self.point['proj_y'] += int(config['stixel']['ground_offset']/(range + 5.0))
+            offset = int(config['stixel']['ground_offset_m'] * range + config['stixel']['ground_offset_b'])
+            self.point['proj_y'] += (offset if offset > 0 else 0)
 
 
-def normalize_into_grid(pos: int, step: int = 8, offset: int = 4):
-    val_norm = 0
+def normalize_into_grid(pos: int, step: int = 8):
+    """val_norm = 0
     rest = pos % step
     if rest > step / 2:
         val_norm = pos + (step - rest)
     else:
         val_norm = pos - rest
     assert val_norm % step == 0
-    return val_norm + offset
+    return val_norm"""
+    val_norm = pos - (pos % step)
+    return val_norm
 
 
 def force_stixel_into_image_grid(stixels: List[List[Stixel]], image_size: Dict[str, int], grid_step: int = 8) -> List[Stixel]:

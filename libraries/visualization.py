@@ -35,7 +35,7 @@ def plot_z_over_range(point_lists: List[np.array], colors: List[str], labels: Li
 
 
 # Funktion zum Plotten von proj_x und proj_y für mehrere Punkte-Listen auf einem gegebenen Bild
-def plot_on_image(image: Image, *point_lists, colors, labels=None, y_offset=-35):
+def plot_on_image(image: Image, *point_lists, colors, labels=None, y_offset=0): #-35
     fig, ax = plt.subplots(figsize=(20, 12))
     plt.tight_layout()
     ax.imshow(np.array(image))
@@ -81,7 +81,7 @@ def calculate_distance(point):
     return np.sqrt(point['x']**2 + point['y']**2 + point['z']**2)
 
 
-def draw_points_on_image(image, points, y_offset=32):
+def draw_points_on_image(image, points, y_offset=0):
     # Farbdefinitionen
     distances = [calculate_distance(point) for point in points]
     max_distance = max(distances)

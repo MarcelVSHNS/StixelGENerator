@@ -27,8 +27,9 @@ class AmeiseData:
         self.image_right: Image = ad.utils.transformation.rectify_image(image=self.frame.cameras[Camera.STEREO_RIGHT],
                                                                         camera_information=self.frame_info.cameras[Camera.STEREO_RIGHT],
                                                                         crop=True)
-        self.pov: np.array = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
+        self.camera_pov: np.array = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
         self.points: np.array = self.point_slices()
+        #self.points['proj_y'] += 35
         # transformation
 
     def point_slices(self) -> np.array:
@@ -68,14 +69,14 @@ class AmeiseDataLoader:
             infos, frames = ad.unpack_record(self.ameise_record_map[idx])
             print(infos.filename)
         except:
-            print(self.ameise_record_map[idx])
+            print(f"Fail to open: {self.ameise_record_map[idx]}")
             return None
         ameise_data_chunk: List[AmeiseData] = []
         frame_num: int = 0
         for ad_frame in frames:
             if frame_num % 2 == 0:      # just use every second frame: 5 Hz
                 if ad_frame.cameras[1].image is not None and ad_frame.cameras[2].image is not None:
-                    ameise_data_chunk.append(AmeiseData(ad_frame, infos, name=f"frame_{str(idx)}_{self.ameise_record_map[idx].split('/')[-1].split('.')[0]}-{frame_num}" ))
+                    ameise_data_chunk.append(AmeiseData(ad_frame, infos, name=f"set_{str(idx)}_{self.ameise_record_map[idx].split('/')[-1].split('.')[0]}-{frame_num}" ))
                     if self.first_only:
                         break
             frame_num += 1

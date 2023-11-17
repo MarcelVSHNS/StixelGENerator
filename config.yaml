@@ -4,7 +4,7 @@ phase: training
 # validation
 data_path: /home/marcel/datasets/
 raw_data_path: /media/marcel/Data1/Raw/
-# /media/marcel/Data1/
+# /media/marcel/Data1/Raw/
 # raw/
 explore_data: True
 exploring:

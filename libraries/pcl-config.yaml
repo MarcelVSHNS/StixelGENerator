@@ -3,14 +3,20 @@ rm_gnd:
   distance_threshold: 0.16
   ransac_n: 5
   num_iterations: 10000
+rm_los:
+  radius: 270000
+  x: 0.0
+  y: 0.0
+  z: 0.0
 rm_far_pts:
-  range_threshold: 63.0
+  range_threshold: 100.0
 group_angle:
   eps: 0.00092
   min_samples: 1
 stixel:
-  proj_y_offset: 32
-  ground_offset: 6
+  proj_y_offset: 0
+  ground_offset_m: -0.25
+  ground_offset_b: 15
 scanline_cluster_obj:
   min_samples: 2
   clustering_factor: 0.08

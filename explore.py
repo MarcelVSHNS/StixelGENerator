@@ -10,7 +10,7 @@ frame_num = config['exploring']['frame_num']
 
 def main():
     dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=True)
-    sample = dataset[106][frame_num]
+    sample = dataset[40][-1]
 
     lp_without_ground = remove_ground(sample.points)
     lp_without_far_pts = remove_far_points(lp_without_ground)
@@ -22,8 +22,8 @@ def main():
         stixel.append(column.get_stixels())  # calculate stixel
     grid_stixel: List[Stixel] = force_stixel_into_image_grid(stixel, dataset.img_size)
     # draw points
-    points_on_img = draw_points_on_image(np.array(sample.image), lp_without_far_pts)
-    #points_on_img.show()
+    points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
+    points_on_img.show()
 
     # draw angle
     angle_on_img = draw_clustered_points_on_image(np.array(sample.image), lp_wg_ordered_by_angle)

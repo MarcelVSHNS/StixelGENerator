@@ -106,7 +106,12 @@ class Stixel:
             # ... apply the floor offset (in px) to proj_y
             range = np.sqrt(self.point['x']**2 + self.point['y']**2)
             offset = int(config['stixel']['ground_offset_m'] * range + config['stixel']['ground_offset_b'])
-            self.point['proj_y'] += (offset if offset > 0 else 0)
+            if offset < 0:
+                offset = 0
+            if self.point['proj_y'] + offset < 1200:
+                self.point['proj_y'] += offset
+            else:
+                self.point['proj_y'] = 1200
 
 
 def normalize_into_grid(pos: int, step: int = 8):
@@ -134,12 +139,14 @@ def force_stixel_into_image_grid(stixels: List[List[Stixel]], image_size: Dict[s
     stixels = [item for sublist in stixels for item in sublist]
     # stacked_stixel = np.vstack(view_stixel)
     for stixel in stixels:
+        assert stixel.point['proj_y'] <= image_size['height'], f"y-value out of bound ({stixel.point['proj_x']},{stixel.point['proj_y']})."
         stixel.point['proj_x'] = normalize_into_grid(stixel.point['proj_x'], step=grid_step)
         if stixel.point['proj_x'] == image_size['width']:
             stixel.point['proj_x'] = image_size['width'] - grid_step
         stixel.point['proj_y'] = normalize_into_grid(stixel.point['proj_y'], step=grid_step)
         if stixel.point['proj_y'] == image_size['height']:
             stixel.point['proj_y'] = image_size['height'] - grid_step
+        assert stixel.point['proj_y'] < image_size['height'], f"y-value out of bound (after norm)."
     return stixels
 
 

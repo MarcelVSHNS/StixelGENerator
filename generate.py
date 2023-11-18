@@ -19,28 +19,33 @@ from libraries import (remove_far_points, remove_ground, group_points_by_angle, 
 with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 overall_start_time = datetime.now()
+phase = ''
 
 
 def main():
-    # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
-    #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
-    dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=False)
-    process_workload: int = int(len(dataset) / config['num_threads'])
-    assert process_workload > 0, "Too less files for num_threads"
-    # distribution of idx over the threads
-    dataset_chunk: List[List[int]] = list(_chunks(list(range(len(dataset))), process_workload))
-    processes: List[Thread] = []
-    for file_index_list in dataset_chunk:
-        # create thread with arg dataset_list (chunk)
-        x: Thread = Thread(target=_generate_data_from_record_chunk, args=(file_index_list, dataset))
-        processes.append(x)
-        x.start()
-        print("Process is working ...")
-    for process in processes:
-        process.join()
-    # create_zip_chunks()
-    overall_time = datetime.now() - overall_start_time
-    print("Finished! in {}".format(overall_time))
+    # config['phases']
+    for config_phase in ['testing']:
+        global phase
+        phase = config_phase
+        # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
+        #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
+        dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=phase, first_only=False)
+        process_workload: int = int(len(dataset) / config['num_threads'])
+        assert process_workload > 0, "Too less files for num_threads"
+        # distribution of idx over the threads
+        dataset_chunk: List[List[int]] = list(_chunks(list(range(len(dataset))), process_workload))
+        processes: List[Thread] = []
+        for file_index_list in dataset_chunk:
+            # create thread with arg dataset_list (chunk)
+            x: Thread = Thread(target=_generate_data_from_record_chunk, args=(file_index_list, dataset))
+            processes.append(x)
+            x.start()
+            print("Process is working ...")
+        for process in processes:
+            process.join()
+        # create_zip_chunks()
+        overall_time = datetime.now() - overall_start_time
+        print(f"Finished {phase} set! in {str(overall_time).split('.')[0]}")
 
 
 def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset):
@@ -75,7 +80,7 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
 
 def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, image_right: Image = None):
     # define paths
-    base_path = os.path.join(config['data_path'], dataset_name, config['phase'])
+    base_path = os.path.join(config['data_path'], dataset_name, phase)
     os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
@@ -93,7 +98,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     for stixel in stixels:
         stixel_class: int = stixel.position_class.value
         depth: float = math.sqrt(math.pow(stixel.point['x'], 2) + math.pow(stixel.point['y'], 2))
-        target_list.append([f"{config['phase']}/{name}.png", int(stixel.point['proj_x']), int(stixel.point['proj_y']), int(stixel_class), round(depth, 1)])
+        target_list.append([f"{phase}/{name}.png", int(stixel.point['proj_x']), int(stixel.point['proj_y']), int(stixel_class), round(depth, 1)])
     target: pd.DataFrame = pd.DataFrame(target_list)
     target.columns = ['img_path', 'x', 'y', 'class', 'depth']
     # save .csv

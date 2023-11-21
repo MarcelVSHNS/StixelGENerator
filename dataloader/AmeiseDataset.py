@@ -28,8 +28,9 @@ class AmeiseData:
                                                                         camera_information=self.frame_info.cameras[Camera.STEREO_RIGHT],
                                                                         crop=True)
         self.camera_pov: np.array = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
+        self.camera_pose = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.rpy
+        self.camera_mtx = ad_info.cameras[Camera.STEREO_LEFT].camera_mtx
         self.points: np.array = self.point_slices()
-        #self.points['proj_y'] += 35
         # transformation
 
     def point_slices(self) -> np.array:

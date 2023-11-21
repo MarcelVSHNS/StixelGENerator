@@ -8,38 +8,50 @@ with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 frame_num = config['exploring']['frame_num']
 
+
 def main():
     dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=True)
-    sample = dataset[40][-1]
-
-    lp_without_ground = remove_ground(sample.points)
+    sample = dataset[0][0]
+    """
+    ground = []
+    for frame in dataset[0]:
+        lp_without_ground, ground_height = remove_ground(frame.points)
+        ground.append(ground_height)
+        print(ground_height)
+    durchschnitt = sum(ground) / len(ground)
+    print(f"mean: {durchschnitt}")
+    """
+    lp_without_ground, ground_height = remove_ground(sample.points)
+    print(ground_height)
     lp_without_far_pts = remove_far_points(lp_without_ground)
     lp_without_los = remove_line_of_sight(lp_without_far_pts, sample.camera_pov)
-    lp_wg_ordered_by_angle = group_points_by_angle(lp_without_los)
-    stixel: List[List[Stixel]] = []
-    for laser_points_by_angle in lp_wg_ordered_by_angle:
-        column: Scanline = Scanline(laser_points_by_angle)
-        stixel.append(column.get_stixels())  # calculate stixel
-    grid_stixel: List[Stixel] = force_stixel_into_image_grid(stixel, dataset.img_size)
+    stixel_gen = StixelGenerator(camera_mtx=sample.camera_mtx, camera_position=sample.camera_pov,
+                                 camera_orientation=sample.camera_pose, img_size=dataset.img_size,
+                                 sensor_height=ground_height)
+    stixel_list = stixel_gen.generate_stixel(lp_without_los)
     # draw points
-    points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
-    points_on_img.show()
+    #points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
+    #points_on_img.show()
 
     # draw angle
-    angle_on_img = draw_clustered_points_on_image(np.array(sample.image), lp_wg_ordered_by_angle)
+    #angle_on_img = draw_clustered_points_on_image(np.array(sample.image), lp_wg_ordered_by_angle)
     #angle_on_img.show()
 
     # draw stixel
-    gt_stixel_img = draw_stixels_on_image(np.array(sample.image),grid_stixel)
+    gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list)
     gt_stixel_img.show()
 
+    lp_wg_ordered_by_angle = group_points_by_angle(lp_without_los)
     # single scanline
     if config['explore_data']:
-        column = Scanline(lp_wg_ordered_by_angle[96])
+        column = Scanline(lp_wg_ordered_by_angle[126], camera_mtx=sample.camera_mtx, camera_position=sample.camera_pov,
+                                 camera_orientation=sample.camera_pose, image_size=dataset.img_size,
+                                 sensor_height=ground_height)
         obj_scanline_on_img = draw_obj_points_on_image(np.array(sample.image), column.objects, column.get_stixels())
-        #obj_scanline_on_img.show()
-        #draw_obj_points_2d(column.objects, column.get_stixels())
-    print(len(grid_stixel))
+        obj_scanline_on_img.show()
+        draw_obj_points_2d(column.objects, column.get_stixels())
+    print(len(stixel_list))
+
 
 if __name__ == "__main__":
     main()

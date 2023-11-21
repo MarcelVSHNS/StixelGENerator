@@ -2,16 +2,16 @@ from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import List, Tuple
-from libraries import PositionClass
+from libraries import StixelClass
 import cv2
+from libraries.pointcloudlib import Stixel
 
 colors = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (0, 255, 0), (0, 255, 255),
           (0, 0, 255), (255, 0, 255)]
 
 stixel_colors = {
-    PositionClass.BOTTOM: (0, 0, 0),  # black
-    PositionClass.OBJECT: (96, 96, 96),  # dark grey
-    PositionClass.TOP: (150, 150, 150)  # grey
+    StixelClass.OBJECT: (96, 96, 96),  # dark grey
+    StixelClass.TOP: (150, 150, 150)  # grey
 }
 
 
@@ -66,14 +66,34 @@ def extract_points_colors_labels(scanline_obj):
         labels_list.append(f'Cluster {idx + 1}')
     return points_list, colors_list, labels_list
 
-def draw_stixels_on_image(image, stixels):
+
+def calculate_depth(x, y, z):
+    # Berechnung der Euklidischen Distanz für die Tiefe
+    depth = np.sqrt(x**2 + y**2 + z**2)
+    return depth
+
+
+def get_color_from_depth(depth, min_depth, max_depth):
+    # Normalisiere die Tiefe zwischen 0 und 1
+    normalized_depth = (depth - min_depth) / (max_depth - min_depth)
+    # Konvertiere den normalisierten Wert in einen Farbwert auf der Jet-Farbkarte
+    color = plt.cm.RdYlGn(normalized_depth)[:3]
+    return tuple(int(c * 255) for c in color)
+
+
+def draw_stixels_on_image(image, stixels: List[Stixel], stixel_width=8, alpha=0.3):
+    depths = [stixel.depth for stixel in stixels]
+    stixels.sort(key=lambda x: x.depth, reverse=True)
+    min_depth, max_depth = min(depths), max(depths)-10
     for stixel in stixels:
-        # Extrahieren Sie die projizierten Koordinaten
-        proj_x, proj_y = stixel.point['proj_x'], stixel.point['proj_y']
-        # Wählen Sie die Farbe basierend auf der PositionClass
-        color = stixel_colors[stixel.position_class]
-        # Zeichnen eines Punktes/Kreises auf das Bild
-        cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+        top_left_x, top_left_y = stixel.top_point['proj_x'], stixel.top_point['proj_y']
+        bottom_left_x, bottom_left_y = stixel.bottom_point['proj_x'], stixel.bottom_point['proj_y']
+        color = get_color_from_depth(stixel.depth, 3, 50)
+        bottom_right_x = bottom_left_x + stixel_width
+        overlay = image.copy()
+        cv2.rectangle(overlay, (top_left_x, top_left_y), (bottom_right_x, bottom_left_y), color, -1)
+        cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+        cv2.rectangle(image, (top_left_x, top_left_y), (bottom_right_x, bottom_left_y), color, 2)
     return Image.fromarray(image)
 
 
@@ -105,7 +125,7 @@ def draw_clustered_points_on_image(image, cluster_list, y_offset=32):
             cv2.circle(image, (proj_x, proj_y), 3, color, -1)
     return Image.fromarray(image)
 
-def draw_obj_points_on_image(image, objects, stixels=None, y_offset=32):
+def draw_obj_points_on_image(image, objects, stixels: List[Stixel] = None, y_offset=0):
     for i, cluster_points in enumerate(objects):
         color = colors[i % len(colors)]
         for point in cluster_points.points:
@@ -114,14 +134,14 @@ def draw_obj_points_on_image(image, objects, stixels=None, y_offset=32):
     if stixels is not None:
         for stixel in stixels:
             # Extrahieren Sie die projizierten Koordinaten
-            proj_x, proj_y = stixel.point['proj_x'], stixel.point['proj_y']
+            proj_x, proj_y = stixel.top_point['proj_x'], stixel.top_point['proj_y']
             # Wählen Sie die Farbe basierend auf der PositionClass
             color = stixel_colors[stixel.position_class]
             # Zeichnen eines Punktes/Kreises auf das Bild
             cv2.circle(image, (proj_x, proj_y), 3, color, -1)
     return Image.fromarray(image)
 
-def draw_obj_points_2d(objects, stixels=None):
+def draw_obj_points_2d(objects, stixels: List[Stixel] = None):
     plt.figure(figsize=(12, 8))
     xs = []
     ys = []
@@ -134,10 +154,11 @@ def draw_obj_points_2d(objects, stixels=None):
             c.append(tuple(val / 255 for val in color))
     if stixels is not None:
         for stixel in stixels:
-            xs.append(np.sqrt(stixel.point['x'] ** 2 + stixel.point['y'] ** 2))
-            ys.append(stixel.point['z'])
+            xs.append(np.sqrt(stixel.top_point['x'] ** 2 + stixel.top_point['y'] ** 2))
+            ys.append(stixel.top_point['z'])
             color = stixel_colors[stixel.position_class]
             c.append(tuple(val / 255 for val in color))
     plt.scatter(xs, ys, c=c, s=20)
     plt.grid(True)
+    plt.xlim([0, max(xs)+0.5])
     plt.show()

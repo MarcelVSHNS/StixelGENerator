@@ -1,10 +1,8 @@
 import os
-import math
 import yaml
 from PIL import Image
 from threading import Thread
 import pandas as pd
-import numpy as np
 from typing import List, Tuple
 from zipfile import ZipFile
 from pathlib import Path
@@ -12,8 +10,7 @@ from os.path import basename
 from datetime import datetime
 # change xxxDataLoader to select the dataset
 from dataloader import AmeiseDataLoader as Dataset, AmeiseData as Data
-from libraries import (remove_far_points, remove_ground, group_points_by_angle, Scanline, force_stixel_into_image_grid,
-                       PositionClass, Stixel, remove_line_of_sight)
+from libraries import (remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight)
 
 # open Config
 with open('config.yaml') as yaml_file:
@@ -24,7 +21,7 @@ phase = ''
 
 def main():
     # config['phases']
-    for config_phase in ['testing']:
+    for config_phase in ['training']:
         global phase
         phase = config_phase
         # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
@@ -55,21 +52,21 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
         # iterate over all frames inside the tfrecord
         frame_num: int = 0
         data_chunk: List[Data] = dataloader[index]
+
         if data_chunk is None:
             break
         for frame in data_chunk:
-            lp_without_ground = remove_ground(frame.points)
-            lp_without_far_pts: np.array = remove_far_points(lp_without_ground)
+            lp_without_ground, ground_height = remove_ground(frame.points)
+            print(ground_height)
+            lp_without_far_pts = remove_far_points(lp_without_ground)
             lp_without_los = remove_line_of_sight(lp_without_far_pts, frame.camera_pov)
-            lp_wg_ordered_by_angle = group_points_by_angle(lp_without_los)
-            stixel: List[List[Stixel]] = []
-            for laser_points_by_angle in lp_wg_ordered_by_angle:
-                column: Scanline = Scanline(laser_points_by_angle)
-                stixel.append(column.get_stixels())                     # calculate stixel
-            grid_stixel: List[Stixel] = force_stixel_into_image_grid(stixel, dataloader.img_size)
+            stixel_gen = StixelGenerator(camera_mtx=frame.camera_mtx, camera_position=frame.camera_pov,
+                                         camera_orientation=frame.camera_pose, img_size=dataloader.img_size,
+                                         sensor_height=ground_height)
+            stixel_list = stixel_gen.generate_stixel(lp_without_los)
             _export_single_dataset(image_left=frame.image,
                                    image_right=frame.image_right if dataloader.stereo_available else None,
-                                   stixels=grid_stixel,
+                                   stixels=stixel_list,
                                    dataset_name=dataloader.name,
                                    name=frame.name)
             frame_num += 1
@@ -93,14 +90,11 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
         os.makedirs(right_img_path, exist_ok=True)
         image_right.save(os.path.join(right_img_path, name + ".png"))
     # create .csv
-    test = PositionClass.BOTTOM
     target_list = []
     for stixel in stixels:
-        stixel_class: int = stixel.position_class.value
-        depth: float = math.sqrt(math.pow(stixel.point['x'], 2) + math.pow(stixel.point['y'], 2))
-        target_list.append([f"{phase}/{name}.png", int(stixel.point['proj_x']), int(stixel.point['proj_y']), int(stixel_class), round(depth, 1)])
+        target_list.append([f"{phase}/{name}.png", int(stixel.top_point['proj_x']), int(stixel.top_point['proj_y']), int(stixel.bottom_point['proj_y']), int(stixel.position_class), round(stixel.depth, 1)])
     target: pd.DataFrame = pd.DataFrame(target_list)
-    target.columns = ['img_path', 'x', 'y', 'class', 'depth']
+    target.columns = ['img_path', 'x', 'yT', 'yB', 'class', 'depth']
     # save .csv
     target.to_csv(os.path.join(label_path, name+".csv"), index=False)
 

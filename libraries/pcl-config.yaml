@@ -13,10 +13,8 @@ rm_far_pts:
 group_angle:
   eps: 0.00092
   min_samples: 1
-stixel:
-  proj_y_offset: 0
-  ground_offset_m: -0.25
-  ground_offset_b: 15
+cluster:
+  to_ground_detection_threshold: 1.0
 scanline_cluster_obj:
   min_samples: 2
   clustering_factor: 0.08

@@ -1,4 +1,4 @@
-phase: validation
+phase: training
 # testing
 # training
 # validation
@@ -6,8 +6,9 @@ phases:
   - training
   - validation
   - testing
-data_path: /home/marcel/datasets/
-raw_data_path: /media/marcel/Data1/Raw/
+data_path: data
+# /home/marcel/datasets/
+raw_data_path: raw
 # /media/marcel/Data1/Raw/
 # raw/
 explore_data: True

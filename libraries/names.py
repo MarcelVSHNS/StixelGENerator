@@ -1,6 +1,7 @@
 import numpy as np
 from enum import Enum
 
+
 point_dtype = np.dtype([
     ('x', np.float64),
     ('y', np.float64),
@@ -10,7 +11,6 @@ point_dtype = np.dtype([
 ])
 
 
-class PositionClass(Enum):
-    BOTTOM: int = -1
+class StixelClass(Enum):
     OBJECT: int = 0
     TOP: int = 1

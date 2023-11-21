@@ -20,8 +20,8 @@ phase = ''
 
 
 def main():
-    # config['phases']
-    for config_phase in ['training']:
+    # config['phases']      , 'validation', 'testing'
+    for config_phase in ['training', 'validation', 'testing']:
         global phase
         phase = config_phase
         # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
@@ -57,7 +57,6 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
             break
         for frame in data_chunk:
             lp_without_ground, ground_height = remove_ground(frame.points)
-            print(ground_height)
             lp_without_far_pts = remove_far_points(lp_without_ground)
             lp_without_los = remove_line_of_sight(lp_without_far_pts, frame.camera_pov)
             stixel_gen = StixelGenerator(camera_mtx=frame.camera_mtx, camera_position=frame.camera_pov,
@@ -92,7 +91,12 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     # create .csv
     target_list = []
     for stixel in stixels:
-        target_list.append([f"{phase}/{name}.png", int(stixel.top_point['proj_x']), int(stixel.top_point['proj_y']), int(stixel.bottom_point['proj_y']), int(stixel.position_class), round(stixel.depth, 1)])
+        target_list.append([f"{phase}/{name}.png",
+                            int(stixel.top_point['proj_x']),
+                            int(stixel.top_point['proj_y']),
+                            int(stixel.bottom_point['proj_y']),
+                            int(stixel.position_class.value),
+                            round(stixel.depth, 1)])
     target: pd.DataFrame = pd.DataFrame(target_list)
     target.columns = ['img_path', 'x', 'yT', 'yB', 'class', 'depth']
     # save .csv

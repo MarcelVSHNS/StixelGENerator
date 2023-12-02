@@ -38,39 +38,6 @@ def _transform_to_sensor(camera_extrinsic: Tuple[np.array, np.array]):
     return t2_to_1
 
 
-def project_point_into_image(point: np.ndarray, camera_pov: np.array, camera_pose: np.array, camera_mtx: np.array) -> Tuple[int, int]:
-    """Retrieve the projection matrix based on provided parameters."""
-    point = np.stack([point['x'], point['y'], point['z']], axis=-1)
-    lidar_to_cam_tf_mtx = _transform_to_sensor((camera_pov, camera_pose))
-    point_in_camera = np.dot(lidar_to_cam_tf_mtx, np.append(point[:3], 1))  # Nehmen Sie nur die ersten 3 Koordinaten
-    pixel = np.dot(camera_mtx, point_in_camera[:3])
-    u, v = int(pixel[0] / pixel[2]), int(pixel[1] / pixel[2])
-    v += 35
-    projection = (u, v)
-    return projection
-
-
-def calculate_bottom_stixel_to_ground(top_point: np.array, sensor_height: float, camera_pov: np.array, camera_pose: np.array, camera_mtx: np.array, apply_gnd_offset=False) -> np.array:
-    bottom_point = top_point.copy()
-    bottom_point['z'] = sensor_height
-    x_proj, y_proj = project_point_into_image(bottom_point, camera_pov=camera_pov, camera_pose=camera_pose,
-                                          camera_mtx=camera_mtx)
-    #assert x_proj == top_point['proj_x']
-    if apply_gnd_offset:
-        m = -0.25
-        b = 15
-        range = np.sqrt(bottom_point['x'] ** 2 + bottom_point['y'] ** 2)
-        offset = int(m * range + b)
-        if offset < 0:
-            offset = 0
-        if y_proj + offset < 1200:
-            y_proj += offset
-        else:
-            y_proj = 1200
-    bottom_point['proj_y'] = y_proj
-    return bottom_point
-
-
 def find_linear_equation(pt1: Tuple[float, float], pt2: Tuple[float, float]):
     x1, y1 = pt1
     x2, y2 = pt2
@@ -83,16 +50,56 @@ def get_range(x: float,y: float) -> float:
     return np.sqrt(x ** 2 + y ** 2)
 
 
-def calculate_bottom_stixel_by_line_of_sight(top_point: np.array, last_point: np.array, camera_pov: np.array, camera_pose: np.array, camera_mtx: np.array, los_offset=0) -> np.array:
-    bottom_point = top_point.copy()
-    camera_pt = (get_range(camera_pov[0], camera_pov[1]), camera_pov[2])
-    last_stixel_pt = (get_range(last_point['x'], last_point['y']), last_point['z'])
-    m, b = find_linear_equation(camera_pt, last_stixel_pt)
-    bottom_point_range = get_range(bottom_point['x'], bottom_point['y'])
-    new_bottom_z = (m * bottom_point_range + b)
-    bottom_point['z'] = new_bottom_z
-    x_proj, y_proj = project_point_into_image(bottom_point, camera_pov=camera_pov, camera_pose=camera_pose,
-                                              camera_mtx=camera_mtx)
-    # assert x_proj == top_point['proj_x']
-    bottom_point['proj_y'] = y_proj - los_offset
-    return bottom_point
+class BottomPointCalculator:
+    def __init__(self, camera_pov: np.array, camera_pose: np.array, camera_mtx: np.array, los_offset=0, apply_gnd_offset=True):
+        self.camera_pov = camera_pov
+        self.camera_pose = camera_pose
+        self.camera_mtx = camera_mtx
+        self.los_offset = los_offset
+        self.apply_gnd_offset = apply_gnd_offset
+
+    def calculate_bottom_stixel_by_line_of_sight(self, top_point: np.array, last_point: np.array) -> np.array:
+        bottom_point = top_point.copy()
+        camera_pt = (get_range(self.camera_pov[0], self.camera_pov[1]), self.camera_pov[2])
+        last_stixel_pt = (get_range(last_point['x'], last_point['y']), last_point['z'])
+        m, b = find_linear_equation(camera_pt, last_stixel_pt)
+        bottom_point_range = get_range(bottom_point['x'], bottom_point['y'])
+        new_bottom_z = (m * bottom_point_range + b)
+        bottom_point['z'] = new_bottom_z
+        x_proj, y_proj = self.__project_point_into_image(bottom_point)
+        # assert x_proj == top_point['proj_x']
+        bottom_point['proj_y'] = y_proj - self.los_offset
+        return bottom_point
+
+    def calculate_bottom_stixel_to_reference_height(self, top_point: np.array) -> np.array:
+        bottom_point = top_point.copy()
+        bottom_point['z'] = top_point['z_ref']
+        x_proj, y_proj = self.__project_point_into_image(bottom_point)
+        print(f'Bottom Point - to reference height: {bottom_point}')
+        # assert x_proj == top_point['proj_x']
+        if self.apply_gnd_offset:
+            m = -0.25
+            b = 15
+            range = np.sqrt(bottom_point['x'] ** 2 + bottom_point['y'] ** 2)
+            offset = int(m * range + b)
+            print(f'applied gnd offset: {offset}')
+            if offset < 0:
+                offset = 0
+            if y_proj - offset > 0:
+                y_proj -= offset
+            else:
+                y_proj = 0
+        bottom_point['proj_y'] = y_proj
+        return bottom_point
+
+    def __project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
+        """Retrieve the projection matrix based on provided parameters."""
+        point = np.stack([point['x'], point['y'], point['z']], axis=-1)
+        lidar_to_cam_tf_mtx = _transform_to_sensor((self.camera_pov, self.camera_pose))
+        point_in_camera = np.dot(lidar_to_cam_tf_mtx,
+                                 np.append(point[:3], 1))  # Nehmen Sie nur die ersten 3 Koordinaten
+        pixel = np.dot(self.camera_mtx, point_in_camera[:3])
+        u, v = int(pixel[0] / pixel[2]), int(pixel[1] / pixel[2])
+        v += 32
+        projection = (u, v)
+        return projection

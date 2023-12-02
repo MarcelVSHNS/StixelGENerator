@@ -81,13 +81,13 @@ def get_color_from_depth(depth, min_depth, max_depth):
     return tuple(int(c * 255) for c in color)
 
 
-def draw_stixels_on_image(image, stixels: List[Stixel], stixel_width=8, alpha=0.3):
+def draw_stixels_on_image(image, stixels: List[Stixel], stixel_width=8, alpha=0.1):
     depths = [stixel.depth for stixel in stixels]
     stixels.sort(key=lambda x: x.depth, reverse=True)
     min_depth, max_depth = min(depths), max(depths)-10
     for stixel in stixels:
-        top_left_x, top_left_y = stixel.top_point['proj_x'], stixel.top_point['proj_y']
-        bottom_left_x, bottom_left_y = stixel.bottom_point['proj_x'], stixel.bottom_point['proj_y']
+        top_left_x, top_left_y = stixel.column, stixel.top_row
+        bottom_left_x, bottom_left_y = stixel.column, stixel.bottom_row
         color = get_color_from_depth(stixel.depth, 3, 50)
         bottom_right_x = bottom_left_x + stixel_width
         overlay = image.copy()

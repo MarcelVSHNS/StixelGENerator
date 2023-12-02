@@ -4,10 +4,10 @@ from sklearn.cluster import DBSCAN
 from sklearn.cluster import OPTICS
 from sklearn.preprocessing import StandardScaler
 from typing import List, Dict, Tuple
-from libraries.names import point_dtype, StixelClass
+from libraries.names import point_dtype, point_dtype_ext, StixelClass
 import yaml
 from scipy.spatial import distance
-from libraries.helper import calculate_bottom_stixel_to_ground, calculate_bottom_stixel_by_line_of_sight
+from libraries.helper import BottomPointCalculator
 
 
 with open('libraries/pcl-config.yaml') as yaml_file:
@@ -32,7 +32,7 @@ def remove_ground(points: np.array) -> np.array:
     # determine sensor height
     ground_points = filtered_xyz[inliers]
     ground_pos = np.mean(ground_points[:, 2])
-    return filtered_points, ground_pos
+    return filtered_points, plane_model
 
 
 def remove_line_of_sight(points: np.array, camera_pose=None):
@@ -92,48 +92,71 @@ def group_points_by_angle(points: np.array) -> List[np.array]:
 
 
 class Stixel:
-    def __init__(self, top_point: np.array, bottom_point: np.array, position_class: int, image_size: Dict[str, int], grid_step: int = 8):
-        self.top_point: np.array = top_point
-        self.position_class: int = position_class
-        self.depth = self.calculate_depth()
+    def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 8):
+        self.column = top_point['proj_x']
+        self.top_row = top_point['proj_y']
+        self.bottom_row = bottom_point['proj_y']
+        self.position_class: StixelClass = position_class
+        self.top_point = top_point
+        self.bottom_point = bottom_point
+        self.depth = self.calculate_depth(top_point)
         self.image_size = image_size
         self.grid_step = grid_step
-        if position_class == StixelClass.OBJECT:
-            self.bottom_point = top_point.copy()
-            self.bottom_point['z'] = bottom_point['z']
-            self.bottom_point['proj_y'] = bottom_point['proj_y']
-        else:
-            self.bottom_point: np.array = bottom_point
+
         self.force_stixel_to_grid()
+        self.check_integrity()
 
     def force_stixel_to_grid(self):
-        for point in (self.top_point, self.bottom_point):
-            assert point['proj_x'] <= self.image_size['width'], f"x-value out of bounds ({point['proj_x']},{point['proj_y']})."
-            point['proj_x'] = self._normalize_into_grid(point['proj_x'], step=self.grid_step)
-            if point['proj_x'] == self.image_size['width']:
-                point['proj_x'] = self.image_size['width'] - self.grid_step
-            point['proj_y'] = self._normalize_into_grid(point['proj_y'], step=self.grid_step)
-            if point['proj_y'] >= self.image_size['height']:
-                point['proj_y'] = self.image_size['height'] - self.grid_step
-            assert point['proj_y'] <= self.image_size['height'], f"y-value out of bounds ({point['proj_x']},{point['proj_y']})."
+        for attr in ('top_row', 'bottom_row'):
+            normalized_row = self._normalize_into_grid(getattr(self, attr), step=self.grid_step)
+            if normalized_row >= self.image_size['height']:
+                normalized_row = self.image_size['height'] - self.grid_step
+            setattr(self, attr, normalized_row)
+        if self.top_row == self.bottom_row:
+            if self.top_row == self.image_size['height'] - self.grid_step:
+                self.top_row -= self.grid_step
+            else:
+                self.bottom_row += self.grid_step
+        self.column = self._normalize_into_grid(self.column, step=self.grid_step)
+        if self.column == self.image_size['width']:
+            self.column = self.image_size['width'] - self.grid_step
+
+    def check_integrity(self):
+        for cut_row in (self.top_row, self.bottom_row):
+            assert cut_row <= self.image_size['height'], f"y-value out of bounds ({self.column},{cut_row})."
+            assert cut_row % self.grid_step == 0, f"y-value is not into grid ({self.column},{cut_row})."
+        assert self.column <= self.image_size['width'], f"x-value out of bounds ({self.column},{cut_row})."
+        assert self.column % self.grid_step == 0, f"x-value is not into grid ({self.column},{cut_row})."
+        if self.top_row > self.bottom_row:
+            print("mist top, hoeher")
+        #assert self.top_row < self.bottom_row, "Top is higher than Bottom."
+        if self.top_row == self.bottom_row:
+            print("mist, sind gleich")
+        #assert self.top_row != self.bottom_row, "Top is Bottom."
 
     @staticmethod
     def _normalize_into_grid(pos: int, step: int = 8):
         val_norm = pos - (pos % step)
         return val_norm
 
-    def calculate_depth(self):
-        depth = np.sqrt(self.top_point['x'] ** 2 + self.top_point['y'] ** 2 + self.top_point['z'] ** 2)
+    @staticmethod
+    def calculate_depth(top_point):
+        depth = np.sqrt(top_point['x'] ** 2 + top_point['y'] ** 2 + top_point['z'] ** 2)
         return depth
 
 
 class Cluster:
-    def __init__(self, points: np.array, sensor_height: float):
-        self.points: np.array = points  # Shape: x, y, z, proj_x, proj_y
+    def __init__(self, points: np.array, plane_model):
+        self.plane_model = plane_model
+        self.points: np.array = points
+        self.is_standing_on_ground = self.check_object_position()
+        if self.is_standing_on_ground:
+            self.points: np.array = self.assign_reference_z_to_points_from_ground(points)    # Shape: x, y, z, proj_x, proj_y, z_ref
+        else:
+            self.points: np.array = self.assign_reference_z_to_points_from_object_low(points)
         self.mean_range: float = self.calculate_mean_range()
-        self.sensor_height = sensor_height
         self.stixels: List[Stixel] = []
-        self.ground_reference_height, self.is_standing_on_ground = self.check_object_position()
+
 
     def __len__(self) -> int:
         return len(self.points)
@@ -143,19 +166,42 @@ class Cluster:
         return float(np.mean(distances))
 
     def sort_points_bottom_stixel(self):
-        # Sort points by ascending z
+        # Sort points by ascending z: -3.2, -2.0, 0.65, ...
         self.points = sorted(self.points, key=lambda point: point['z'])
 
     def sort_points_top_obj_stixel(self):
+        # Sort points by descending z: 3.2, 2.0, 0.65, ...
         self.points = sorted(self.points, key=lambda point: point['z'], reverse=True)
+
+    def assign_reference_z_to_points_from_ground(self, points):
+        referenced_points = np.empty(points.shape, dtype=point_dtype_ext)
+        a, b, c, d = self.plane_model
+        assert c != 0, "Dont divide by 0"
+        for i, point in enumerate(points):
+            x, y, z, proj_x, proj_y = point
+            z_ref = -(a * x + b * y + d) / c
+            referenced_points[i] = (x, y, z, proj_x, proj_y, z_ref)
+        return referenced_points
+
+    def assign_reference_z_to_points_from_object_low(self, points):
+        referenced_points = np.empty(points.shape, dtype=point_dtype_ext)
+        self.sort_points_top_obj_stixel()
+        cluster_point_ref_z = self.points[-1]['z']
+        for i, point in enumerate(points):
+            x, y, z, proj_x, proj_y = point
+            referenced_points[i] = (x, y, z, proj_x, proj_y, cluster_point_ref_z)
+        return referenced_points
 
     def check_object_position(self):
         self.sort_points_top_obj_stixel()
-        cluster_point_with_lowest_z = self.points[-1]['z']
-        if cluster_point_with_lowest_z - config['cluster']['to_ground_detection_threshold'] - self.sensor_height < 0:
-            return self.sensor_height, True
+        cluster_point = self.points[-1]
+        a, b, c, d = self.plane_model
+        # calculate distance to plane
+        distance = abs(a * cluster_point['x'] + b * cluster_point['y'] + c * cluster_point['z'] + d) / np.sqrt(a ** 2 + b ** 2 + c ** 2)
+        if distance <= config['cluster']['to_ground_detection_threshold']:
+            return True
         else:
-            return cluster_point_with_lowest_z, False
+            return False
 
 
 
@@ -170,15 +216,14 @@ def _euclidean_distance_with_raising_eps(p1, p2):
 
 
 class Scanline:
-    def __init__(self, points: np.array, camera_mtx, camera_position, camera_orientation, sensor_height, image_size):
-        self.camera_mtx = camera_mtx
-        self.camera_pov = camera_position
-        self.camera_pose = camera_orientation
-        self.sensor_height = sensor_height
+    def __init__(self, points: np.array, camera_mtx, camera_position, camera_orientation, plane_model, image_size):
+        self.plane_model = plane_model
+        self.bottom_pt_calc = BottomPointCalculator(camera_pov=camera_position, camera_pose=camera_orientation,
+                                                    camera_mtx=camera_mtx)
         self.image_size = image_size
         self.points: np.array = np.array(points, dtype=point_dtype)
         self.objects: List[Cluster] = []
-        self.last_object_top_stixel = None
+        self.last_cluster_top_stixel = None
 
     def _cluster_objects(self):
         # Compute the radial distance r
@@ -206,7 +251,7 @@ class Scanline:
                 continue  # Skip outliers
             # Create a Cluster object for each group of points sharing the same label
             cluster_points = self.points[labels == label]
-            self.objects.append(Cluster(cluster_points, self.sensor_height))
+            self.objects.append(Cluster(cluster_points, self.plane_model))
         # Sort the list of Cluster objects by their mean_range
         self.objects = sorted(self.objects, key=lambda cluster: cluster.mean_range)
 
@@ -214,31 +259,37 @@ class Scanline:
         for cluster in self.objects:
             # cluster.sort_points_bottom_stixel()
             cluster.sort_points_top_obj_stixel()
-            last_top_stixel_x: Stixel = None  # saves last Top-Stixel
+            last_cluster_stixel_x: Stixel = None  # saves last Top-Stixel
             # add the top point
             for point in cluster.points:
-                if last_top_stixel_x is None:
+                top_point = None
+                bottom_point = None
+                point_dist = np.sqrt(point['x'] ** 2 + point['y'] ** 2)
+
+                if last_cluster_stixel_x is None:
+                    last_stixel_dist = None
+                else:
+                    last_stixel_dist = np.sqrt(
+                        last_cluster_stixel_x.top_point['x'] ** 2 + last_cluster_stixel_x.top_point['y'] ** 2)
+
+                if (last_cluster_stixel_x is None or
+                        (last_stixel_dist is not None and (last_stixel_dist - point_dist) >
+                         config['scanline_determine_stixel']['x_threshold'])):
                     top_point = point
                     # sensor_height
-                    if self.last_object_top_stixel is None:
-                        bottom_point = calculate_bottom_stixel_to_ground(top_point, cluster.ground_reference_height,
-                                                                         self.camera_pov, self.camera_pose,
-                                                                         self.camera_mtx)
+                    if self.last_cluster_top_stixel is None:
+                        print("To Bottom.")
+                        bottom_point = self.bottom_pt_calc.calculate_bottom_stixel_to_reference_height(top_point)
                     else:
-                        bottom_point = calculate_bottom_stixel_by_line_of_sight(top_point, self.last_object_top_stixel.top_point,
-                                                                                self.camera_pov, self.camera_pose,
-                                                                                self.camera_mtx)
-                    new_stixel = Stixel(top_point=top_point, bottom_point=bottom_point, position_class=StixelClass.TOP, image_size=self.image_size)
+                        print("Line oS.")
+                        bottom_point = self.bottom_pt_calc.calculate_bottom_stixel_by_line_of_sight(top_point,
+                                                                                                    self.last_cluster_top_stixel.top_point)
+                    pos_cls = StixelClass.TOP if last_cluster_stixel_x is None else StixelClass.OBJECT
+                    new_stixel = Stixel(top_point=top_point, bottom_point=bottom_point, position_class=pos_cls, image_size=self.image_size)
                     cluster.stixels.append(new_stixel)
-                    last_top_stixel_x = new_stixel
-                    if cluster.is_standing_on_ground:
-                        self.last_object_top_stixel = new_stixel
-                # Iterate through each point in the cluster to check the x_threshold condition
-                elif (last_top_stixel_x.top_point['x'] - point['x']) > config['scanline_determine_stixel']['x_threshold']:
-                    top_point = point
-                    obj_stixel = Stixel(top_point=top_point, bottom_point=last_top_stixel_x.bottom_point, position_class=StixelClass.OBJECT, image_size=self.image_size)
-                    cluster.stixels.append(obj_stixel)
-                    last_top_stixel_x = obj_stixel   # Update the x position for the next iteration
+                    last_cluster_stixel_x = new_stixel
+                    if cluster.is_standing_on_ground and last_cluster_stixel_x is None:
+                        self.last_cluster_top_stixel = new_stixel
 
     def get_stixels(self) -> List[Stixel]:
         self._cluster_objects()
@@ -248,11 +299,11 @@ class Scanline:
 
 
 class StixelGenerator:
-    def __init__(self, camera_mtx, camera_position, camera_orientation, img_size, sensor_height):
+    def __init__(self, camera_mtx, camera_position, camera_orientation, img_size, plane_model):
         self.camera_mtx = camera_mtx
         self.camera_pov = camera_position
         self.camera_pose = camera_orientation
-        self.sensor_height = sensor_height
+        self.plane_model = plane_model
         self.img_size = img_size
         self.laser_scanlines = []
 
@@ -264,7 +315,7 @@ class StixelGenerator:
                               camera_mtx=self.camera_mtx,
                               camera_position=self.camera_pov,
                               camera_orientation=self.camera_pose,
-                              sensor_height=self.sensor_height,
+                              plane_model=self.plane_model,
                               image_size=self.img_size)
             stixels.append(column.get_stixels())
         return [stixel for sublist in stixels for stixel in sublist]

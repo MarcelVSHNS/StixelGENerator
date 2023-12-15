@@ -59,6 +59,15 @@ def remove_far_points(points: np.array) -> np.array:
     filtered_points = points[ranges <= config['rm_far_pts']['range_threshold']]
     return filtered_points
 
+def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
+    a, b, c, d = plane_model
+    filtered_points = []
+    for point in points:
+        x, y, z, proj_x, proj_y = point
+        if a * x + b * y + c * z + d >= 0:
+            filtered_points.append(point)
+    return np.array(filtered_points)
+
 
 def group_points_by_angle(points: np.array) -> List[np.array]:
     """
@@ -127,12 +136,8 @@ class Stixel:
             assert cut_row % self.grid_step == 0, f"y-value is not into grid ({self.column},{cut_row})."
         assert self.column <= self.image_size['width'], f"x-value out of bounds ({self.column},{cut_row})."
         assert self.column % self.grid_step == 0, f"x-value is not into grid ({self.column},{cut_row})."
-        if self.top_row > self.bottom_row:
-            print("mist top, hoeher")
-        #assert self.top_row < self.bottom_row, "Top is higher than Bottom."
-        if self.top_row == self.bottom_row:
-            print("mist, sind gleich")
-        #assert self.top_row != self.bottom_row, "Top is Bottom."
+        #assert self.top_row < self.bottom_row, f"Top is higher than Bottom. Top_pt: {self.top_point}. Bottom_pt:{self.bottom_point}."
+        assert self.top_row != self.bottom_row, "Top is Bottom."
 
     @staticmethod
     def _normalize_into_grid(pos: int, step: int = 8):
@@ -176,6 +181,7 @@ class Cluster:
     def assign_reference_z_to_points_from_ground(self, points):
         referenced_points = np.empty(points.shape, dtype=point_dtype_ext)
         a, b, c, d = self.plane_model
+        #d -= 0.05
         assert c != 0, "Dont divide by 0"
         for i, point in enumerate(points):
             x, y, z, proj_x, proj_y = point
@@ -278,10 +284,8 @@ class Scanline:
                     top_point = point
                     # sensor_height
                     if self.last_cluster_top_stixel is None:
-                        print("To Bottom.")
                         bottom_point = self.bottom_pt_calc.calculate_bottom_stixel_to_reference_height(top_point)
                     else:
-                        print("Line oS.")
                         bottom_point = self.bottom_pt_calc.calculate_bottom_stixel_by_line_of_sight(top_point,
                                                                                                     self.last_cluster_top_stixel.top_point)
                     pos_cls = StixelClass.TOP if last_cluster_stixel_x is None else StixelClass.OBJECT

@@ -51,7 +51,7 @@ def get_range(x: float,y: float) -> float:
 
 
 class BottomPointCalculator:
-    def __init__(self, camera_pov: np.array, camera_pose: np.array, camera_mtx: np.array, los_offset=0, apply_gnd_offset=True):
+    def __init__(self, camera_pov: np.array, camera_pose: np.array, camera_mtx: np.array, los_offset=0, apply_gnd_offset=False):
         self.camera_pov = camera_pov
         self.camera_pose = camera_pose
         self.camera_mtx = camera_mtx
@@ -75,7 +75,6 @@ class BottomPointCalculator:
         bottom_point = top_point.copy()
         bottom_point['z'] = top_point['z_ref']
         x_proj, y_proj = self.__project_point_into_image(bottom_point)
-        print(f'Bottom Point - to reference height: {bottom_point}')
         # assert x_proj == top_point['proj_x']
         if self.apply_gnd_offset:
             m = -0.25

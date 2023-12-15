@@ -10,7 +10,7 @@ from os.path import basename
 from datetime import datetime
 # change xxxDataLoader to select the dataset
 from dataloader import AmeiseDataLoader as Dataset, AmeiseData as Data
-from libraries import (remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight)
+from libraries import (remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model)
 
 # open Config
 with open('config.yaml') as yaml_file:
@@ -56,12 +56,13 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
         if data_chunk is None:
             break
         for frame in data_chunk:
-            lp_without_ground, ground_height = remove_ground(frame.points)
+            lp_without_ground, plane_model = remove_ground(frame.points)
             lp_without_far_pts = remove_far_points(lp_without_ground)
-            lp_without_los = remove_line_of_sight(lp_without_far_pts, frame.camera_pov)
+            lp_plane_model_corrected = remove_pts_below_plane_model(lp_without_far_pts, plane_model)
+            lp_without_los = remove_line_of_sight(lp_plane_model_corrected, frame.camera_pov)
             stixel_gen = StixelGenerator(camera_mtx=frame.camera_mtx, camera_position=frame.camera_pov,
                                          camera_orientation=frame.camera_pose, img_size=dataloader.img_size,
-                                         sensor_height=ground_height)
+                                         plane_model=plane_model)
             stixel_list = stixel_gen.generate_stixel(lp_without_los)
             _export_single_dataset(image_left=frame.image,
                                    image_right=frame.image_right if dataloader.stereo_available else None,
@@ -92,9 +93,9 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     target_list = []
     for stixel in stixels:
         target_list.append([f"{phase}/{name}.png",
-                            int(stixel.top_point['proj_x']),
-                            int(stixel.top_point['proj_y']),
-                            int(stixel.bottom_point['proj_y']),
+                            int(stixel.column),
+                            int(stixel.top_row),
+                            int(stixel.bottom_row),
                             int(stixel.position_class.value),
                             round(stixel.depth, 1)])
     target: pd.DataFrame = pd.DataFrame(target_list)

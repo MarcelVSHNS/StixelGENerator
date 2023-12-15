@@ -22,11 +22,9 @@ class AmeiseData:
         self.frame: ad.data.Frame = ad_frame
         self.frame_info: ad.data.Infos = ad_info
         self.image: Image = ad.utils.transformation.rectify_image(image=self.frame.cameras[Camera.STEREO_LEFT],
-                                                                  camera_information=self.frame_info.cameras[Camera.STEREO_LEFT],
-                                                                  crop=True)
+                                                                  camera_information=self.frame_info.cameras[Camera.STEREO_LEFT])
         self.image_right: Image = ad.utils.transformation.rectify_image(image=self.frame.cameras[Camera.STEREO_RIGHT],
-                                                                        camera_information=self.frame_info.cameras[Camera.STEREO_RIGHT],
-                                                                        crop=True)
+                                                                        camera_information=self.frame_info.cameras[Camera.STEREO_RIGHT])
         self.camera_pov: np.array = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.xyz
         self.camera_pose = ad_info.cameras[Camera.STEREO_LEFT].extrinsic.rpy
         self.camera_mtx = ad_info.cameras[Camera.STEREO_LEFT].camera_mtx
@@ -34,7 +32,7 @@ class AmeiseData:
         # transformation
 
     def point_slices(self) -> np.array:
-        pts, projection = ad.utils.transformation.get_projection_matrix(pcloud=self.frame.lidar[Lidar.OS1_TOP].points,
+        pts, projection = ad.utils.transformation.get_points_on_image(pcloud=self.frame.lidar[Lidar.OS1_TOP].points,
                                                                         lidar_info=self.frame_info.lidar[Lidar.OS1_TOP],
                                                                         cam_info=self.frame_info.cameras[Camera.STEREO_LEFT])
         projection_list = np.array(projection)

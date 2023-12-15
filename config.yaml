@@ -9,7 +9,7 @@ phases:
 data_path: /home/marcel/datasets/
 # /home/marcel/datasets/
 # data/
-raw_data_path: /media/marcel/Data1/Raw/
+raw_data_path: /media/marcel/external_ssd/datasets/
 # /media/marcel/Data1/Raw/
 # raw/
 explore_data: True

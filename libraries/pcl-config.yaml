@@ -1,7 +1,7 @@
 rm_gnd:
   z_max: -1.0
-  distance_threshold: 0.16
-  ransac_n: 5
+  distance_threshold: 0.14
+  ransac_n: 3
   num_iterations: 10000
 rm_los:
   radius: 270000

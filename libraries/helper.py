@@ -41,8 +41,8 @@ def _transform_to_sensor(camera_extrinsic: Tuple[np.array, np.array]):
 def find_linear_equation(pt1: Tuple[float, float], pt2: Tuple[float, float]):
     x1, y1 = pt1
     x2, y2 = pt2
-    m = (y2 - y1) / (x2 - x1)  # Steigung berechnen
-    b = y1 - m * x1  # y-Achsenabschnitt berechnen
+    m = (y2 - y1) / (x2 - x1)
+    b = y1 - m * x1
     return m, b
 
 
@@ -51,16 +51,21 @@ def get_range(x: float,y: float) -> float:
 
 
 class BottomPointCalculator:
-    def __init__(self, camera_pov: np.array, camera_pose: np.array, camera_mtx: np.array, los_offset=0, apply_gnd_offset=False):
-        self.camera_pov = camera_pov
-        self.camera_pose = camera_pose
+    def __init__(self, camera_xyz: np.array, camera_rpy: np.array, camera_mtx: np.array,
+                 proj_mtx: np.array, rect_mtx: np.array,
+                 los_offset=0, apply_gnd_offset=False):
+        self.camera_xyz = camera_xyz
+        self.camera_rpy = camera_rpy
         self.camera_mtx = camera_mtx
+        self.proj_mtx = proj_mtx
+        self.rect_mtx = np.eye(4)
+        self.rect_mtx[:3, :3] = rect_mtx
         self.los_offset = los_offset
         self.apply_gnd_offset = apply_gnd_offset
 
     def calculate_bottom_stixel_by_line_of_sight(self, top_point: np.array, last_point: np.array) -> np.array:
         bottom_point = top_point.copy()
-        camera_pt = (get_range(self.camera_pov[0], self.camera_pov[1]), self.camera_pov[2])
+        camera_pt = (get_range(self.camera_xyz[0], self.camera_xyz[1]), self.camera_xyz[2])
         last_stixel_pt = (get_range(last_point['x'], last_point['y']), last_point['z'])
         m, b = find_linear_equation(camera_pt, last_stixel_pt)
         bottom_point_range = get_range(bottom_point['x'], bottom_point['y'])
@@ -94,11 +99,12 @@ class BottomPointCalculator:
     def __project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
         """Retrieve the projection matrix based on provided parameters."""
         point = np.stack([point['x'], point['y'], point['z']], axis=-1)
-        lidar_to_cam_tf_mtx = _transform_to_sensor((self.camera_pov, self.camera_pose))
-        point_in_camera = np.dot(lidar_to_cam_tf_mtx,
-                                 np.append(point[:3], 1))  # Nehmen Sie nur die ersten 3 Koordinaten
-        pixel = np.dot(self.camera_mtx, point_in_camera[:3])
-        u, v = int(pixel[0] / pixel[2]), int(pixel[1] / pixel[2])
-        v += 32
+        lidar_to_cam_tf_mtx = _transform_to_sensor((self.camera_xyz, self.camera_rpy))
+        # point_in_camera = np.dot(lidar_to_cam_tf_mtx,
+        #                          np.append(point[:3], 1))  # Nehmen Sie nur die ersten 3 Koordinaten
+        point_in_camera = self.proj_mtx.dot(self.rect_mtx.dot(lidar_to_cam_tf_mtx.dot(np.append(point[:3], 1))))
+        # pixel = np.dot(self.camera_mtx, point_in_camera[:3])
+        u = int(point_in_camera[0] / point_in_camera[2])
+        v = int(point_in_camera[1] / point_in_camera[2])
         projection = (u, v)
         return projection

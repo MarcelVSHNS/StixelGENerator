@@ -222,10 +222,14 @@ def _euclidean_distance_with_raising_eps(p1, p2):
 
 
 class Scanline:
-    def __init__(self, points: np.array, camera_mtx, camera_position, camera_orientation, plane_model, image_size):
+    def __init__(self, points: np.array, camera_info, plane_model, image_size):
+        self.camera_info = camera_info
         self.plane_model = plane_model
-        self.bottom_pt_calc = BottomPointCalculator(camera_pov=camera_position, camera_pose=camera_orientation,
-                                                    camera_mtx=camera_mtx)
+        self.bottom_pt_calc = BottomPointCalculator(camera_xyz=self.camera_info.extrinsic.xyz,
+                                                    camera_rpy=self.camera_info.extrinsic.rpy,
+                                                    camera_mtx=self.camera_info.camera_mtx,
+                                                    proj_mtx=self.camera_info.projection_mtx,
+                                                    rect_mtx=self.camera_info.rectification_mtx)
         self.image_size = image_size
         self.points: np.array = np.array(points, dtype=point_dtype)
         self.objects: List[Cluster] = []
@@ -303,10 +307,11 @@ class Scanline:
 
 
 class StixelGenerator:
-    def __init__(self, camera_mtx, camera_position, camera_orientation, img_size, plane_model):
-        self.camera_mtx = camera_mtx
-        self.camera_pov = camera_position
-        self.camera_pose = camera_orientation
+    def __init__(self, camera_info, img_size, plane_model):
+        # self.camera_mtx = camera_mtx
+        # self.camera_pov = camera_position
+        # self.camera_pose = camera_orientation
+        self.camera_info = camera_info
         self.plane_model = plane_model
         self.img_size = img_size
         self.laser_scanlines = []
@@ -316,9 +321,7 @@ class StixelGenerator:
         stixels = []
         for angle_laser_points in laser_points_by_angle:
             column = Scanline(angle_laser_points,
-                              camera_mtx=self.camera_mtx,
-                              camera_position=self.camera_pov,
-                              camera_orientation=self.camera_pose,
+                              camera_info=self.camera_info,
                               plane_model=self.plane_model,
                               image_size=self.img_size)
             stixels.append(column.get_stixels())

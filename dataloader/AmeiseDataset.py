@@ -21,6 +21,7 @@ class AmeiseData:
         self.name: str = name
         self.frame: ad.data.Frame = ad_frame
         self.frame_info: ad.data.Infos = ad_info
+        self.camera_info: ad.data.CameraInformation = self.frame_info.cameras[Camera.STEREO_LEFT]
         self.image: Image = ad.utils.transformation.rectify_image(image=self.frame.cameras[Camera.STEREO_LEFT],
                                                                   camera_information=self.frame_info.cameras[Camera.STEREO_LEFT])
         self.image_right: Image = ad.utils.transformation.rectify_image(image=self.frame.cameras[Camera.STEREO_RIGHT],

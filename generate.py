@@ -60,8 +60,7 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
             lp_without_far_pts = remove_far_points(lp_without_ground)
             lp_plane_model_corrected = remove_pts_below_plane_model(lp_without_far_pts, plane_model)
             lp_without_los = remove_line_of_sight(lp_plane_model_corrected, frame.camera_pov)
-            stixel_gen = StixelGenerator(camera_mtx=frame.camera_mtx, camera_position=frame.camera_pov,
-                                         camera_orientation=frame.camera_pose, img_size=dataloader.img_size,
+            stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
                                          plane_model=plane_model)
             stixel_list = stixel_gen.generate_stixel(lp_without_los)
             _export_single_dataset(image_left=frame.image,
@@ -86,7 +85,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     os.makedirs(label_path, exist_ok=True)
     # save images
     image_left.save(os.path.join(left_img_path, name + ".png"))
-    if image_right is not None:
+    if image_right is not None and phase == 'testing':
         os.makedirs(right_img_path, exist_ok=True)
         image_right.save(os.path.join(right_img_path, name + ".png"))
     # create .csv

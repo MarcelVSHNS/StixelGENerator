@@ -29,7 +29,7 @@ def _create_transformation_matrix(translation, rotation):
 
 
 def _transform_to_sensor(camera_extrinsic: Tuple[np.array, np.array]):
-    """Transform the data to the sensor's coordinate frame."""
+    """Transform the raw to the sensor's coordinate frame."""
     lidar_pov = np.array([0, 0, 0])
     lidar_pose = np.array([0, 0, 0])
     t1 = _create_transformation_matrix(lidar_pov, lidar_pose)
@@ -59,7 +59,7 @@ class BottomPointCalculator:
         self.camera_mtx = camera_mtx
         self.proj_mtx = proj_mtx
         self.rect_mtx = np.eye(4)
-        self.rect_mtx[:3, :3] = rect_mtx
+        self.rect_mtx[:3, :3] = rect_mtx[:3, :3]
         self.los_offset = los_offset
         self.apply_gnd_offset = apply_gnd_offset
 

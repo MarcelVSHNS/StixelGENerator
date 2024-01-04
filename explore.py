@@ -1,4 +1,4 @@
-from dataloader.AmeiseDataset import AmeiseDataLoader as Dataset
+from dataloader.KittiDataset import KittiDataLoader as Dataset
 from libraries.pointcloudlib import *
 from libraries.visualization import draw_stixels_on_image, draw_points_on_image, draw_clustered_points_on_image, draw_obj_points_on_image, draw_obj_points_2d
 import yaml
@@ -11,7 +11,7 @@ frame_num = config['exploring']['frame_num']
 
 def main():
     dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=True)
-    sample = dataset[105][-1]
+    sample = dataset[0][-1]
     # 105[-1] cyclist
     """
     ground = []

@@ -36,7 +36,7 @@ def remove_ground(points: np.array) -> np.array:
 
 
 def remove_line_of_sight(points: np.array, camera_pose=None):
-    # Manually extract x, y, z data from the structured array
+    # Manually extract x, y, z raw from the structured array
     pcd = o3d.geometry.PointCloud()
     xyz = np.vstack((points['x'], points['y'], points['z'])).T
     pcd.points = o3d.utility.Vector3dVector(xyz)
@@ -102,9 +102,9 @@ def group_points_by_angle(points: np.array) -> List[np.array]:
 
 class Stixel:
     def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 8):
-        self.column = top_point['proj_x']
-        self.top_row = top_point['proj_y']
-        self.bottom_row = bottom_point['proj_y']
+        self.column = abs(top_point['proj_x'])
+        self.top_row = abs(top_point['proj_y'])
+        self.bottom_row = abs(bottom_point['proj_y'])
         self.position_class: StixelClass = position_class
         self.top_point = top_point
         self.bottom_point = bottom_point
@@ -243,9 +243,9 @@ class Scanline:
         sorted_r = r_values[sorted_indices]
         sorted_z = self.points['z'][sorted_indices]
         self.points = self.points[sorted_indices]
-        # Prepare the data for DBSCAN
+        # Prepare the raw for DBSCAN
         db_data = np.column_stack((sorted_r, sorted_z))
-        # Check if enough data points are present for clustering
+        # Check if enough raw points are present for clustering
         if len(db_data) > 1:
             # Apply the DBSCAN clustering algorithm
             db = DBSCAN(eps=100,

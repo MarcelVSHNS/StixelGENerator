@@ -6,11 +6,12 @@ phases:
   - training
   - validation
   - testing
-data_path: /home/marcel/datasets/
+data_path: data/
 # /home/marcel/datasets/
 # data/
-raw_data_path: /media/marcel/external_ssd/datasets/
+raw_data_path: raw/
 # /media/marcel/Data1/Raw/
+# /media/marcel/external_ssd/datasets/
 # raw/
 explore_data: True
 exploring:

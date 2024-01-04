@@ -12,7 +12,7 @@ from libraries.names import point_dtype
 class WaymoDataLoader:
     def __init__(self, data_dir: str, phase: str, camera_segmentation_only=False, first_only=True):
         """
-        Loads a full set of waymo data in single frames, can be one tf_record file or a folder of  tf_record files.
+        Loads a full set of waymo raw in single frames, can be one tf_record file or a folder of  tf_record files.
         provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
         .images (5 views) and .laser_points (top lidar, divided into 5 fitting views). Like e.g.:
         798 tfrecord-files (selected by "idx")
@@ -22,7 +22,7 @@ class WaymoDataLoader:
         Args:
             data_dir: specify the location of the tf_records
             camera_segmentation_only: if True, loads only frames with available camera segmentation
-            first_only: doesn't load the full ~20 frames to return a data sample if True
+            first_only: doesn't load the full ~20 frames to return a raw sample if True
         """
         self.name: str = "waymo-open-dataset"
         self.data_dir = os.path.join(data_dir, "ameise", phase)
@@ -77,7 +77,7 @@ class WaymoDataLoader:
 class WaymoData:
     def __init__(self, tf_frame, camera_segmentation_only=False):
         """
-        Base class for data from waymo open dataset
+        Base class for raw from waymo open dataset
         Args:
             tf_frame:
             camera_segmentation_only:

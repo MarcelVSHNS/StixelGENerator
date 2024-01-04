@@ -24,7 +24,7 @@ def main():
     for config_phase in ['training', 'validation', 'testing']:
         global phase
         phase = config_phase
-        # load data - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
+        # load raw - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
         #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
         dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=phase, first_only=False)
         process_workload: int = int(len(dataset) / config['num_threads'])

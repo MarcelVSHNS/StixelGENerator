@@ -6,10 +6,10 @@ phases:
   - training
   - validation
   - testing
-data_path: data/
+data_path: C:\Users\marce\Documents\datasets
 # /home/marcel/datasets/
 # data/
-raw_data_path: raw/
+raw_data_path: C:\Users\marce\Documents\raw
 # /media/marcel/Data1/Raw/
 # /media/marcel/external_ssd/datasets/
 # raw/
@@ -26,3 +26,6 @@ num_threads: 1
 num_zips_training: 15
 num_zips_validation: 3
 num_zips_testing: 3
+grid_step: 8
+SemSeg:
+  for_dataset: ameise

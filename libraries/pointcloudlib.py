@@ -8,6 +8,7 @@ from libraries.names import point_dtype, point_dtype_ext, StixelClass
 import yaml
 from scipy.spatial import distance
 from libraries.helper import BottomPointCalculator
+from dataloader.Stixel import BaseStixel
 
 
 with open('libraries/pcl-config.yaml') as yaml_file:
@@ -100,8 +101,9 @@ def group_points_by_angle(points: np.array) -> List[np.array]:
     return angle_cluster
 
 
-class Stixel:
+class Stixel(BaseStixel):
     def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 8):
+        super().__init__()
         self.column = abs(top_point['proj_x'])
         self.top_row = abs(top_point['proj_y'])
         self.bottom_row = abs(bottom_point['proj_y'])

@@ -56,6 +56,7 @@ class KittiData:
         combined_data = np.hstack((pts_coordinates, projection_list))
         return np.array([tuple(row) for row in combined_data], dtype=point_dtype)
 
+
 class KittiDataLoader:
     def __init__(self, data_dir, phase, first_only=False):
         self.name: str = "KITTI-dataset"

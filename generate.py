@@ -9,8 +9,8 @@ from pathlib import Path
 from os.path import basename
 from datetime import datetime
 # change xxxDataLoader to select the dataset
-from dataloader import AmeiseDataLoader as Dataset, AmeiseData as Data
-from libraries import (remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model)
+from dataloader.AmeiseDataset import AmeiseDataLoader as Dataset, AmeiseData as Data
+from libraries.pointcloudlib import (remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model)
 
 # open Config
 with open('config.yaml') as yaml_file:
@@ -74,9 +74,9 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
         print("Time elapsed: {}".format(step_time))
 
 
-def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, image_right: Image = None):
+def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, image_right: Image = None, export_phase=phase):
     # define paths
-    base_path = os.path.join(config['data_path'], dataset_name, phase)
+    base_path = os.path.join(config['data_path'], dataset_name, export_phase)
     os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
@@ -85,7 +85,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     os.makedirs(label_path, exist_ok=True)
     # save images
     image_left.save(os.path.join(left_img_path, name + ".png"))
-    if image_right is not None and phase == 'testing':
+    if image_right is not None and export_phase == 'testing':
         os.makedirs(right_img_path, exist_ok=True)
         image_right.save(os.path.join(right_img_path, name + ".png"))
     # create .csv

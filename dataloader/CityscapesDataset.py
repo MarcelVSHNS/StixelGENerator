@@ -14,20 +14,32 @@ label_of_interest = ['building', 'wall', 'fence', 'guard rail', 'bridge', 'tunne
                      'traffic light', 'vegetation', 'person', 'rider', 'car', 'truck', 'bus', 'caravan', 'trailer',
                      'motorcycle', 'bicycle', 'train']
 
+def crop_ego_vehicle(image, lower_pos):
+    width, height = image.size
+    return image.crop((0, 0, width, lower_pos))
+
 
 class CityscapesData:
     def __init__(self, name, left_img: Image, right_img: Image, gt_labels: np.array, gt_colors: np.array, img_size=(1920, 1200), grid_step: int = 8):
         self.name = name
-        self.original_left_img: Image = left_img
-        self.original_right_img: Image = right_img
+        self.gt_labels: np.array = gt_labels
+        crop_lower = self.find_upper_border_of_ego_vehicle()
+        self.original_left_img: Image = crop_ego_vehicle(left_img, crop_lower)
+        self.original_right_img: Image = crop_ego_vehicle(right_img, crop_lower)
         self.img_size: Tuple[int, int] = img_size
         self.orig_img_size: Tuple[int, int] = self.original_left_img.size
-        self.left_img: Image = self._crop_image_and_resize_to_size(left_img)
-        self.right_img: Image = self._crop_image_and_resize_to_size(right_img)
-        self.gt_labels: np.array = gt_labels
+        self.left_img: Image = self._crop_image_and_resize_to_size(self.original_left_img)
+        self.right_img: Image = self._crop_image_and_resize_to_size(self.original_right_img)
         self.gt_colors: np.array = gt_colors
         self.grid_step: int = grid_step
         self.gt_obstacles: List[BaseStixel] = self._extract_obstacle_stixels()
+
+    def find_upper_border_of_ego_vehicle(self):
+        label = 1
+        for row_index, row in enumerate(self.gt_labels):
+            if label in row:
+                return row_index
+        return -1
 
     def _extract_obstacle_stixels(self) -> List[BaseStixel]:
         stixels: List[BaseStixel] = []
@@ -36,8 +48,8 @@ class CityscapesData:
         edges = self._force_edges_to_grid(edges)
         edges = self._find_lower_border(edges)
         edges = self._crop_and_resize_label_array(edges)
-        im = self.draw_edges_on_image(self.left_img, edges)
-        im.show()
+        #img = self.draw_edges_on_image(self.left_img, edges)
+        #img.show()
         ys, xs = np.where(edges == 1)
         for x, y in zip(xs, ys):
             stixels.append(BaseStixel(column=x // self.grid_step,
@@ -142,19 +154,20 @@ class CityscapesData:
         return label_array
 
     @staticmethod
-    def _normalize_into_grid(pos: int, grid_step: int = 8):
+    def _normalize_into_grid(pos: int, grid_step: int = 4):
         val_norm = pos - (pos % grid_step)
         return val_norm
 
 
 class CityscapesDataLoader:
-    def __init__(self, root_dir: str, img_size: Tuple[int, int] = (1920, 1200)):
+    def __init__(self, root_dir: str, img_size: Tuple[int, int] = (1920, 1200), grid_step=8):
         self.name: str = "cityscapes"
         self.root_dir: str = os.path.join(root_dir, self.name)
         self.left_img_path: str = os.path.join(self.root_dir, "leftImg8bit", "val")
         self.right_img_path: str = os.path.join(self.root_dir, "rightImg8bit", "val")
         self.gt_path: str = os.path.join(self.root_dir, "gtFine", "val")
         self.img_size: Tuple[int, int] = img_size
+        self.grid_step : int = grid_step
         self.sample_map: List[Dict[str, str]] = self._read_cityscapes_data_structure()
         if len(self.sample_map) == 0:
             raise Exception("No Files found, check root folder!")
@@ -174,7 +187,8 @@ class CityscapesDataLoader:
                                                  right_img=right_img,
                                                  gt_labels=gt_labels,
                                                  gt_colors=gt_colors,
-                                                 img_size=self.img_size)
+                                                 img_size=self.img_size,
+                                                 grid_step=self.grid_step)
         return cs_data
 
     def __repr__(self):

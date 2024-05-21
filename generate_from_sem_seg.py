@@ -17,7 +17,8 @@ def main():
         raise Exception("Specify the dataset!")
 
     cs_dataset = Dataloader(root_dir=config['raw_data_path'],
-                            img_size=img_size)
+                            img_size=img_size,
+                            grid_step=config['grid_step'])
     dataset_path = os.path.join(cs_dataset.name, config['SemSeg']['for_dataset'])
     for sample in cs_dataset:
         _export_single_dataset(image_left=sample.left_img,

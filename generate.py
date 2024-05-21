@@ -80,7 +80,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
-    label_path = os.path.join(base_path, "targets_from_lidar")
+    label_path = os.path.join(base_path, "targets_from_semseg")
     os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     # save images

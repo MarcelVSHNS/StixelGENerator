@@ -1,4 +1,4 @@
-# Automatic Ground Truth - Documemtation will be completed until 30.6.24
+# Automatic Ground Truth Generation for a Stixel-World by LiDAR - Documemtation will be completed until 30.6.24
 This repo is designed to generate custom Stixel training data based on some Data Sets (branches).
 
 ## KITTI

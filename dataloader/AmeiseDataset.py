@@ -12,7 +12,7 @@ from libraries.names import point_dtype
 class AmeiseData:
     def __init__(self, ad_frame: ad.data.Frame, ad_info: ad.data.Infos, name: str):
         """
-        Base class for raw from waymo open dataset
+        Base class for data from waymo open dataset
         Args:
             ad_frame:
             ad_info:
@@ -45,7 +45,7 @@ class AmeiseData:
 class AmeiseDataLoader:
     def __init__(self, data_dir: str, phase: str, first_only: bool = False):
         """
-        Loads a full set of ameise raw in single frames, can be one .4mse file or a folder of .4mse files.
+        Loads a full set of ameise data in single frames, can be one .4mse file or a folder of .4mse files.
         provides a list by index for a .4mse-file which has ~50 frame objects. Every object has lists of
         .images (4 views) and .lidar (top lidar, divided into 5 fitting views). Like e.g.:
         798 .4mse-files (selected by "idx")
@@ -54,7 +54,7 @@ class AmeiseDataLoader:
                 3 .laser_points (shape of [..., [x, y, z, img_x, img_y]])
         Args:
             data_dir: specify the location of the tf_records
-            first_only: doesn't load the full ~20 frames to return a raw sample if True
+            first_only: doesn't load the full ~20 frames to return a data sample if True
         """
         self.name: str = "ameise-dataset"
         self.data_dir = os.path.join(data_dir, "ameise", phase)

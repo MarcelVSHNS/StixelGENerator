@@ -22,5 +22,3 @@ class BaseStixel:
         self.column = int(self.column * self.grid_step)
         self.top_row = int(self.top_row * self.grid_step)
         self.bottom_row = int(self.bottom_row * self.grid_step)
-        if self.bottom_row > 1200 or self.top_row > 1200 or self.column > 1920:
-            print("nooo")

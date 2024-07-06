@@ -2,11 +2,23 @@ import numpy as np
 import pykitti
 import os
 from typing import List, Tuple
-
 from libraries.names import point_dtype
 
 
 class CameraInformation:
+    """
+    Class to store camera information.
+
+    Attributes:
+        extrinsic (Pose): The extrinsic pose of the camera.
+        camera_mtx (np.array): The camera matrix.
+        projection_mtx (np.array): The projection matrix.
+        rectification_mtx (np.array): The rectification matrix.
+
+    Methods:
+        __init__(self, xyz: np.array, rpy: np.array, camera_mtx: np.array, projection_mtx: np.array, rectification_mtx: np.array):
+            Initializes the CameraInformation object with the given camera information.
+    """
     def __init__(self, xyz: np.array, rpy: np.array, camera_mtx: np.array, projection_mtx: np.array, rectification_mtx: np.array):
         self.extrinsic: Pose = Pose(xyz, rpy)
         self.camera_mtx: np.array = camera_mtx
@@ -27,7 +39,7 @@ class KittiData:
         self.image_right = rgb_stereo_pair[1]       # cam3, rectified
         self.points: np.array = velo_scan
         self.t_cam2_velo = calib_data.T_cam2_velo       # transformation matrix
-        rota_mtx = self.t_cam2_velo[:3, :3]  # Die Rotationsmatrix
+        rota_mtx = self.t_cam2_velo[:3, :3]  # rotation matrix
         yaw = np.arctan2(rota_mtx[1, 0], rota_mtx[0, 0])
         pitch = np.arctan2(-rota_mtx[2, 0], np.sqrt(rota_mtx[2, 1] ** 2 + rota_mtx[2, 2] ** 2))
         roll = np.arctan2(rota_mtx[2, 1], rota_mtx[2, 2])
@@ -37,6 +49,8 @@ class KittiData:
                                                                 projection_mtx=np.array(calib_data.P_rect_20),
                                                                 rectification_mtx=calib_data.R_rect_20)
         self.points: np.array = self.point_slices()
+        self.camera_pov: np.array = self.camera_info.extrinsic.xyz
+        self.camera_pose = self.camera_info.extrinsic.rpy
 
     def point_slices(self) -> np.array:
         velo = np.insert(self.points[:, 0:3], 3, 1, axis=1).T

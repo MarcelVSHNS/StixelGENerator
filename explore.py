@@ -11,7 +11,8 @@ frame_num = config['exploring']['frame_num']
 
 def main():
     dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=config['phase'], first_only=True)
-    sample = dataset[0][-1]
+    set = dataset[0]
+    sample = set[-1]
     # 105[-1] cyclist
     """
     ground = []

@@ -101,12 +101,11 @@ def group_points_by_angle(points: np.array) -> List[np.array]:
     return angle_cluster
 
 
-class Stixel(BaseStixel):
+class Stixel:
     def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 8):
-        super().__init__()
-        self.column = abs(top_point['proj_x'])
-        self.top_row = abs(top_point['proj_y'])
-        self.bottom_row = abs(bottom_point['proj_y'])
+        self.column = top_point['proj_x']
+        self.top_row = top_point['proj_y']
+        self.bottom_row = bottom_point['proj_y']
         self.position_class: StixelClass = position_class
         self.top_point = top_point
         self.bottom_point = bottom_point

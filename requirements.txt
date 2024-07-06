@@ -4,4 +4,3 @@ opencv-python
 Pillow
 pandas
 pyyaml
-ameise

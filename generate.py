@@ -5,7 +5,7 @@ import pandas as pd
 from typing import List, Tuple
 from datetime import datetime
 from dataloader import KittiDataLoader as Dataset, KittiData as Data
-from libraries.pointcloudlib import (remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model)
+from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model
 
 # open Config
 with open('config.yaml') as yaml_file:
@@ -38,7 +38,7 @@ def main():
         for process in processes:
             process.join()
         """
-        _generate_data_from_record_chunk(list(range(len(dataset))), dataset)
+        _generate_data_from_record_chunk(list(range(len(dataset))), dataset, phase=phase)
         overall_time = datetime.now() - overall_start_time
         print(f"Finished {phase} set! in {str(overall_time).split('.')[0]}")
 

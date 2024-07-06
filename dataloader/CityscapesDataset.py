@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image
 from typing import Tuple, List, Dict
 from cityscapesscripts.helpers.labels import labels
-from dataloader.Stixel import BaseStixel
+from libraries import Stixel as BaseStixel
 
 
 # id = name2label[name].id

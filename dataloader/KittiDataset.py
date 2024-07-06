@@ -2,21 +2,20 @@ import numpy as np
 import pykitti
 import os
 from typing import List, Tuple
-from libraries.names import point_dtype
+from libraries.Stixel import point_dtype
 
 
 class CameraInformation:
     """
     Class to store camera information.
-
     Attributes:
         extrinsic (Pose): The extrinsic pose of the camera.
         camera_mtx (np.array): The camera matrix.
         projection_mtx (np.array): The projection matrix.
         rectification_mtx (np.array): The rectification matrix.
-
     Methods:
-        __init__(self, xyz: np.array, rpy: np.array, camera_mtx: np.array, projection_mtx: np.array, rectification_mtx: np.array):
+        __init__(self, xyz: np.array, rpy: np.array, camera_mtx: np.array, projection_mtx: np.array,
+            rectification_mtx: np.array):
             Initializes the CameraInformation object with the given camera information.
     """
     def __init__(self, xyz: np.array, rpy: np.array, camera_mtx: np.array, projection_mtx: np.array, rectification_mtx: np.array):
@@ -27,12 +26,35 @@ class CameraInformation:
 
 
 class Pose:
+    """
+    Initializes a new Pose object.
+    Args:
+        xyz (np.array): The position vector in x, y, and z coordinates.
+        rpy (np.array): The orientation vector in roll, pitch, and yaw angles.
+    """
     def __init__(self, xyz: np.array, rpy: np.array):
         self.xyz: np.array = xyz
         self.rpy: np.array = rpy
 
 
 class KittiData:
+    """
+    Class representing KITTI dataset.
+    This class contains information about a specific data sample in the KITTI dataset, including the RGB images,
+    3D point cloud, and calibration data.
+    Attributes:
+        name (str): The name of the data sample.
+        image (numpy.array): The left rectified RGB image.
+        image_right (numpy.array): The right rectified RGB image.
+        points (numpy.array): The 3D point cloud.
+        t_cam2_velo (numpy.array): The transformation matrix from camera 2 coordinates to velodyne coordinates.
+        camera_info (CameraInformation): The camera information object containing metadata and calibration data.
+    Methods:
+        __init__(name, rgb_stereo_pair, velo_scan, calib_data): Initializes a new KittiData instance with the given
+        parameters.
+        point_slices() -> numpy.array: Processes the point cloud and returns the filtered points with their respective
+        pixel coordinates.
+    """
     def __init__(self, name, rgb_stereo_pair, velo_scan, calib_data):
         self.name: str = name
         self.image = rgb_stereo_pair[0]     # cam2, rectified
@@ -72,6 +94,22 @@ class KittiData:
 
 
 class KittiDataLoader:
+    """
+    Class KittiDataLoader
+    Loads the KITTI dataset from specified directory and provides methods to access the data.
+    Attributes:
+        name (str): Name of the dataset.
+        data_dir (str): Directory path where the dataset is located.
+        kitti_record_map (np.array): Numpy array containing the extracted date and drive information.
+        first_only (bool): If True, only the first frame of each sequence will be returned.
+        img_size (dict): Dictionary containing the width and height of the images.
+        stereo_available (bool): Indicates if stereo data is available.
+    Methods:
+        __init__(self, data_dir, phase, first_only=False)
+        __getitem__(self, idx)
+        __len__(self)
+        _read_kitty_data_structure(self)
+    """
     def __init__(self, data_dir, phase, first_only=False):
         self.name: str = "KITTI-dataset"
         self.data_dir = os.path.join(data_dir, "kitti", phase)
@@ -103,6 +141,13 @@ class KittiDataLoader:
         return len(self.kitti_record_map)
 
     def _read_kitty_data_structure(self) -> np.array:
+        """
+        Reads the kitty data structure from the specified directory.
+        Args:
+            self: The instance of the class.
+        Returns:
+            np.array: A numpy array containing the extracted date and drive information.
+        """
         date_drive_list = []
         date_list = [name for name in os.listdir(self.data_dir) if os.path.isdir(os.path.join(self.data_dir, name))]
         for date in date_list:

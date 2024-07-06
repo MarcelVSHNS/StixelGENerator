@@ -1,21 +1,25 @@
 import open3d as o3d
 import numpy as np
 from sklearn.cluster import DBSCAN
-from sklearn.cluster import OPTICS
-from sklearn.preprocessing import StandardScaler
-from typing import List, Dict, Tuple
-from libraries.names import point_dtype, point_dtype_ext, StixelClass
+from typing import List
+from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass
 import yaml
 from scipy.spatial import distance
 from libraries.helper import BottomPointCalculator
-from dataloader.Stixel import BaseStixel
-
+from libraries import Stixel
 
 with open('libraries/pcl-config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 
 
 def remove_ground(points: np.array) -> np.array:
+    """
+    Args:
+        points: A numpy array of shape (N, 3) representing the 3D coordinates of points.
+    Returns:
+        filtered_points: A numpy array of shape (M, 3) containing the filtered points after removing the ground.
+        plane_model: A tuple containing the parameters of the detected ground plane.
+    """
     pcd = o3d.geometry.PointCloud()
     xyz = np.vstack((points['x'], points['y'], points['z'])).T
     pcd.points = o3d.utility.Vector3dVector(xyz)
@@ -37,6 +41,16 @@ def remove_ground(points: np.array) -> np.array:
 
 
 def remove_line_of_sight(points: np.array, camera_pose=None):
+    """
+    Removes points that are in line of sight of a camera.
+    Args:
+        points: A numpy array containing structured data with fields 'x', 'y', 'z'.
+        camera_pose: Optional camera pose as a list of [x, y, z]. If not provided, it will use the default camera pose
+        from the configuration.
+    Returns:
+        filtered_points: A numpy array containing structured data with the same fields as 'points', with the points
+        that are in line of sight removed.
+    """
     # Manually extract x, y, z raw from the structured array
     pcd = o3d.geometry.PointCloud()
     xyz = np.vstack((points['x'], points['y'], points['z'])).T
@@ -54,13 +68,44 @@ def remove_line_of_sight(points: np.array, camera_pose=None):
 
 
 def remove_far_points(points: np.array) -> np.array:
+    """
+    Args:
+        points (np.array): An array of points, with each point represented as a structured array containing the 'x' and
+         'y' coordinates.
+    Returns:
+        np.array: An array of points filtered to remove points that are far away from the origin.
+    Description:
+    This method takes in an array of points and calculates the distance from the origin (0,0) for each point using the
+    Euclidean distance formula. It then filters out points where the distance is greater than a specified threshold,
+    which is retrieved from the 'config' dictionary using the key 'rm_far_pts.range_threshold'.
+    Example:
+        points = np.array([(1, 2), (3, 4), (5, 6), (7, 8), (9, 10)])
+        filtered_points = remove_far_points(points)
+        # Output: array([(1, 2), (3, 4), (5, 6)])
+    Note:
+        - The input `points` array should be a structured array with fields 'x' and 'y'.
+        - The 'config' dictionary should contain the 'rm_far_pts.range_threshold' key, which specifies the maximum
+          distance allowed between a point and the origin.
+        - The return value is an array of points where the distance from the origin is less than or equal to the
+          threshold.
+    """
     # Calculate the distance (range) from x and y for each point
     ranges = np.sqrt(points['x'] ** 2 + points['y'] ** 2)
     # Filter out points where the distance is greater than the threshold
     filtered_points = points[ranges <= config['rm_far_pts']['range_threshold']]
     return filtered_points
 
+
 def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
+    """
+    Removes points that are below the plane model from the given array of points.
+    Args:
+        points (numpy.array): An array of points, where each point is represented by an array of five values
+        (x, y, z, proj_x, proj_y).
+        plane_model: A tuple representing the coefficients of the plane model (a, b, c, d), where a, b, c are the
+        normal vector components of the plane and d is the distance from the origin.
+    Returns:
+        numpy.array: An array of points that are above or on the plane model"""
     a, b, c, d = plane_model
     filtered_points = []
     for point in points:
@@ -72,13 +117,11 @@ def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
 
 def group_points_by_angle(points: np.array) -> List[np.array]:
     """
-    Groups points based on their azimuth angle and returns a list of arrays,
-    each containing the points (x, y, z, proj_x, proj_y) of the same angle.
-
-    :param points: A numpy array of points (x, y, z, proj_x, proj_y).
-    :param eps: The maximum distance between two points to be considered in the same cluster.
-    :param min_samples: The number of points required in a neighborhood for a point to be considered a core point.
-    :return: A list of numpy arrays, each containing points of an angle cluster.
+    Groups points based on their azimuth angles.
+    Args:
+        points: A numpy array of points, where each point has 'x' and 'y' coordinates.
+    Returns:
+        A list of numpy arrays, where each array represents a cluster of points with similar azimuth angles.
     """
     # Compute the azimuth angle for each point
     azimuth_angles = np.arctan2(points['y'], points['x'])
@@ -101,57 +144,22 @@ def group_points_by_angle(points: np.array) -> List[np.array]:
     return angle_cluster
 
 
-class Stixel:
-    def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 8):
-        self.column = top_point['proj_x']
-        self.top_row = top_point['proj_y']
-        self.bottom_row = bottom_point['proj_y']
-        self.position_class: StixelClass = position_class
-        self.top_point = top_point
-        self.bottom_point = bottom_point
-        self.depth = self.calculate_depth(top_point)
-        self.image_size = image_size
-        self.grid_step = grid_step
-
-        self.force_stixel_to_grid()
-        self.check_integrity()
-
-    def force_stixel_to_grid(self):
-        for attr in ('top_row', 'bottom_row'):
-            normalized_row = self._normalize_into_grid(getattr(self, attr), step=self.grid_step)
-            if normalized_row >= self.image_size['height']:
-                normalized_row = self.image_size['height'] - self.grid_step
-            setattr(self, attr, normalized_row)
-        if self.top_row == self.bottom_row:
-            if self.top_row == self.image_size['height'] - self.grid_step:
-                self.top_row -= self.grid_step
-            else:
-                self.bottom_row += self.grid_step
-        self.column = self._normalize_into_grid(self.column, step=self.grid_step)
-        if self.column == self.image_size['width']:
-            self.column = self.image_size['width'] - self.grid_step
-
-    def check_integrity(self):
-        for cut_row in (self.top_row, self.bottom_row):
-            assert cut_row <= self.image_size['height'], f"y-value out of bounds ({self.column},{cut_row})."
-            assert cut_row % self.grid_step == 0, f"y-value is not into grid ({self.column},{cut_row})."
-        assert self.column <= self.image_size['width'], f"x-value out of bounds ({self.column},{cut_row})."
-        assert self.column % self.grid_step == 0, f"x-value is not into grid ({self.column},{cut_row})."
-        #assert self.top_row < self.bottom_row, f"Top is higher than Bottom. Top_pt: {self.top_point}. Bottom_pt:{self.bottom_point}."
-        assert self.top_row != self.bottom_row, "Top is Bottom."
-
-    @staticmethod
-    def _normalize_into_grid(pos: int, step: int = 8):
-        val_norm = pos - (pos % step)
-        return val_norm
-
-    @staticmethod
-    def calculate_depth(top_point):
-        depth = np.sqrt(top_point['x'] ** 2 + top_point['y'] ** 2 + top_point['z'] ** 2)
-        return depth
-
-
 class Cluster:
+    """
+    Class representing a cluster of points.
+    Attributes:
+    - points (np.array): Array of points in the cluster. Shape: x, y, z, proj_x, proj_y, z_ref
+    - plane_model (tuple): Tuple of four coefficients (a, b, c, d) representing the plane model of the cluster
+    Methods:
+    - __len__() -> int: Returns the number of points in the cluster
+    - calculate_mean_range() -> float: Calculates the mean range of the points in the cluster
+    - sort_points_bottom_stixel(): Sorts the points by ascending z value
+    - sort_points_top_obj_stixel(): Sorts the points by descending z value
+    - assign_reference_z_to_points_from_ground(points): Assigns reference z values to points from the ground
+    - assign_reference_z_to_points_from_object_low(points): Assigns reference z values to points from the lowest object
+     point
+    - check_object_position() -> bool: Checks if the cluster is standing on the ground
+    """
     def __init__(self, points: np.array, plane_model):
         self.plane_model = plane_model
         self.points: np.array = points
@@ -162,7 +170,6 @@ class Cluster:
             self.points: np.array = self.assign_reference_z_to_points_from_object_low(points)
         self.mean_range: float = self.calculate_mean_range()
         self.stixels: List[Stixel] = []
-
 
     def __len__(self) -> int:
         return len(self.points)
@@ -211,18 +218,41 @@ class Cluster:
             return False
 
 
-
 def _euclidean_distance_with_raising_eps(p1, p2):
-    # Berechnen Sie die normale euklidische Distanz zwischen den 2D-Punkten
+    """
+    Calculates the Euclidean distance between two 2D points, with the possibility of raising the epsilon value.
+    Args:
+        p1: A tuple representing the coordinates of the first point.
+        p2: A tuple representing the coordinates of the second point.
+
+    Returns:
+        The Euclidean distance between the two points if it is within the dynamic epsilon value, otherwise returns
+         infinity.
+    """
     dist = distance.euclidean(p1, p2)
-    # Der 'eps'-Wert basiert auf der 'range'-Komponente (erste Spalte) der Punkte
     dynamic_eps = config['scanline_cluster_obj']['clustering_factor'] * max(p1[0], p2[0]) + \
                   config['scanline_cluster_obj']['clustering_offset']
-    # Überprüfen Sie, ob die Distanz innerhalb des dynamischen 'eps'-Wertes liegt
     return dist if dist <= dynamic_eps else np.inf
 
 
 class Scanline:
+    """
+    Class representing a scanline.
+    Attributes:
+        camera_info (object): Information about the camera used to capture the scanline.
+        plane_model (object): Model representing the plane where objects are detected.
+        bottom_pt_calc (object): Calculator for determining the bottom point of stixels.
+        image_size (tuple): Size of the image.
+    Methods:
+        __init__(self, points: np.array, camera_info, plane_model, image_size):
+            Initializes a new Scanline object.
+        _cluster_objects(self):
+            Clusters the objects in the scanline based on their radial distance from the camera.
+        _determine_stixel(self):
+            Determines the stixels for each clustered object in the scanline.
+        get_stixels(self) -> List[Stixel]:
+            Returns a list of stixels found in the scanline.
+    """
     def __init__(self, points: np.array, camera_info, plane_model, image_size):
         self.camera_info = camera_info
         self.plane_model = plane_model
@@ -308,10 +338,19 @@ class Scanline:
 
 
 class StixelGenerator:
+    """
+    StixelGenerator -> ScanLine -> Cluster -> Stixel
+    Class representing a Stixel Generator.
+    StixelGenerator is responsible for generating stixels from laser points.
+    Attributes:
+        camera_info (CameraInfo): The camera info object containing camera parameters.
+        img_size (tuple): The size of the image (width, height).
+        plane_model (PlaneModel): The plane model used for plane fitting.
+        laser_scanlines (list): The list of laser scanlines.
+    Methods:
+        generate_stixel: Generates stixels from laser points.
+    """
     def __init__(self, camera_info, img_size, plane_model):
-        # self.camera_mtx = camera_mtx
-        # self.camera_pov = camera_position
-        # self.camera_pose = camera_orientation
         self.camera_info = camera_info
         self.plane_model = plane_model
         self.img_size = img_size

@@ -6,7 +6,7 @@ from typing import List, Tuple
 from waymo_open_dataset import dataset_pb2 as open_dataset
 from waymo_open_dataset.utils import frame_utils
 from PIL import Image
-from libraries.names import point_dtype
+from libraries.Stixel import point_dtype
 
 
 class WaymoDataLoader:

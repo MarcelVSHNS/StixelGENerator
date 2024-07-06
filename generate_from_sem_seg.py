@@ -1,8 +1,8 @@
 import os.path
-
 from dataloader.CityscapesDataset import CityscapesDataLoader as Dataloader
 from generate import _export_single_dataset
 import yaml
+
 # 0.1 Load configfile
 with open('config.yaml') as yamlfile:
     config = yaml.load(yamlfile, Loader=yaml.FullLoader)

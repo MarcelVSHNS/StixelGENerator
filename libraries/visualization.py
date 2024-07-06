@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple
 from libraries import StixelClass
 import cv2
-from libraries.pointcloudlib import Stixel
+from libraries import Stixel
 
 colors = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (0, 255, 0), (0, 255, 255),
           (0, 0, 255), (255, 0, 255)]
@@ -117,6 +117,7 @@ def draw_points_on_image(image, points, y_offset=0):
         cv2.circle(image, (proj_x, proj_y), 3, color, -1)
     return Image.fromarray(image)
 
+
 def draw_clustered_points_on_image(image, cluster_list, y_offset=32):
     for i, cluster_points in enumerate(cluster_list):
         color = colors[i % len(colors)]
@@ -140,6 +141,7 @@ def draw_obj_points_on_image(image, objects, stixels: List[Stixel] = None, y_off
             # Zeichnen eines Punktes/Kreises auf das Bild
             cv2.circle(image, (proj_x, proj_y), 3, color, -1)
     return Image.fromarray(image)
+
 
 def draw_obj_points_2d(objects, stixels: List[Stixel] = None):
     plt.figure(figsize=(12, 8))

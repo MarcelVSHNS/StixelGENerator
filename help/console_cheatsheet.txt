@@ -1,8 +1,0 @@
-# change owner:
-sudo chown -R marcel data/
-
-
-
-# Docker
-# Start a container
-sudo docker run --gpus all -it tensorflow/tensorflow-gt-lidar-gen:latest

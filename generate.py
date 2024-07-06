@@ -11,16 +11,17 @@ from libraries.pointcloudlib import (remove_far_points, remove_ground, StixelGen
 with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 overall_start_time = datetime.now()
-phase = ''
 
 
 def main():
+    """
+    Basic start of the project. Configure phase and load the related data. E.g. Kitti dataloader provides datasets
+    organised by drive.
+    """
     # config['phases']      , 'validation', 'testing'
     for config_phase in ['training', 'validation', 'testing']:
-        global phase
         phase = config_phase
-        # load raw - provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
-        #     .images (5 views) and .laser_points (top lidar, divided into 5 fitting views).
+        # every dataset consist all frames of one drive (kitti)
         dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=phase, first_only=True)
         """ Multi Threading - deprecated
         process_workload: int = int(len(dataset) / config['num_threads'])
@@ -42,7 +43,15 @@ def main():
         print(f"Finished {phase} set! in {str(overall_time).split('.')[0]}")
 
 
-def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset):
+def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset, phase: str):
+    """
+    Iterates through all drives, frame by frame. For every frame a stixel world is generated.
+    The access is simply done by an index list which enables the distribution to multiple threads
+    Args:
+        index_list: A list of indices representing the records to be processed.
+        dataloader: The dataset object that provides access to the data.
+        phase: The phase of data processing.
+    """
     # work on a list of assigned indices
     for index in index_list:
         print(f'index: {index} in progress ...')
@@ -60,18 +69,30 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset)
             stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
                                          plane_model=plane_model)
             stixel_list = stixel_gen.generate_stixel(lp_without_los)
+            # Export a single Stixel Wold representation and the relative images
             _export_single_dataset(image_left=frame.image,
                                    image_right=frame.image_right if dataloader.stereo_available else None,
                                    stixels=stixel_list,
                                    dataset_name=dataloader.name,
-                                   name=frame.name)
+                                   name=frame.name,
+                                   export_phase=phase)
             frame_num += 1
         print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
         print("Time elapsed: {}".format(step_time))
 
 
-def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, image_right: Image = None, export_phase=phase):
+def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, export_phase: str, image_right: Image = None):
+    """
+    Exports the Stixel World and cares for paths etc.
+    Args:
+        image_left: The left stereo image.
+        stixels: A list of stixels representing objects in the image.
+        name: The name of the image dataset.
+        dataset_name: The name of the dataset.
+        export_phase: The phase of the dataset to export (e.g., training, testing).
+        image_right: The right stereo image (optional, only required for testing phase).
+    """
     # define paths
     base_path = os.path.join(config['data_path'], dataset_name, export_phase)
     os.makedirs(base_path, exist_ok=True)
@@ -88,7 +109,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     # create .csv
     target_list = []
     for stixel in stixels:
-        target_list.append([f"{phase}/{name}.png",
+        target_list.append([f"{export_phase}/{name}.png",
                             int(stixel.column),
                             int(stixel.top_row),
                             int(stixel.bottom_row),
@@ -101,7 +122,16 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
 
 
 def _chunks(lst, n) -> List[List[int]]:
-    """Yield successive n-sized chunks from lst."""
+    """
+    Args:
+        lst: A list of integers or other data types.
+        n: An integer representing the size of each chunk.
+    Returns:
+        A list of lists, where each sublist contains 'n' elements from the input list 'lst'. The last sublist may contain fewer than 'n' elements if the length of the input list is not divisible by 'n'.
+    Example:
+        >>> _chunks([1, 2, 3, 4, 5, 6, 7, 8, 9], 3)
+        [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+    """
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 

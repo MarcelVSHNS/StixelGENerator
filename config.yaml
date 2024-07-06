@@ -7,25 +7,15 @@ phases:
   - validation
   - testing
 data_path: /media/marcel/Data1/datasets/train_on_kitti
-# /home/marcel/datasets/
-# data/
 raw_data_path: /media/marcel/Data1/Raw
-# /media/marcel/Data1/Raw/
-# /media/marcel/external_ssd/datasets/
-# raw/
-explore_data: True
 exploring:
+  enable: False
   view: 1
   random_idx: False
   idx: 13
   frame_num: -1
   col: 180
 explore_data_deep: False
-num_views: 3
-num_threads: 1
-num_zips_training: 15
-num_zips_validation: 3
-num_zips_testing: 3
 grid_step: 4
 SemSeg:
   for_dataset: kitti

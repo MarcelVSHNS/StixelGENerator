@@ -1,41 +1,109 @@
 from typing import List, Dict, Tuple
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 
-def _euler_to_rotation_matrix(roll, pitch, yaw):
-    """Convert Euler angles to rotation matrix."""
-    cos_r, sin_r = np.cos(roll), np.sin(roll)
-    cos_p, sin_p = np.cos(pitch), np.sin(pitch)
-    cos_y, sin_y = np.cos(yaw), np.sin(yaw)
-    R_x = np.array([[1, 0, 0],
-                    [0, cos_r, -sin_r],
-                    [0, sin_r, cos_r]])
-    R_y = np.array([[cos_p, 0, sin_p],
-                    [0, 1, 0],
-                    [-sin_p, 0, cos_p]])
-    R_z = np.array([[cos_y, -sin_y, 0],
-                    [sin_y, cos_y, 0],
-                    [0, 0, 1]])
-    R = np.dot(R_z, np.dot(R_y, R_x))
-    return R
+class Transformation:
+    """
+    This class represents a transformation from one coordinate frame to another. It contains methods to set and
+    retrieve information about the transformation.
+    Attributes:
+        _at (str): The name of the coordinate frame that the transformation is applied to.
+        _to (str): The name of the coordinate frame that the transformation is applied from.
+        _translation (np.ndarray): The translation vector of the transformation.
+        _rotation (np.ndarray): The rotation vector of the transformation.
+        transformation_mtx (np.ndarray): The transformation matrix representing the transformation.
+    Methods:
+        __init__(self, at, to, xyz, rpy)
+            Initializes a new instance of the Transformation class.
+        at (property)
+            Getter and setter for the _at attribute.
+        to (property)
+            Getter and setter for the _to attribute.
+        translation (property)
+            Getter and setter for the _translation attribute.
+        rotation (property)
+            Getter and setter for the _rotation attribute.
+        _update_transformation_matrix(self)
+            Updates the transformation matrix based on the current translation and rotation vectors.
+        add_transformation(self, transformation_to_add)
+            Adds another transformation to the current transformation and returns a new Transformation object.
+        invert_transformation(self)
+            Inverts the current transformation and returns a new Transformation object representing the inverse transformation.
+    """
+    def __init__(self, at, to, xyz, rpy):
+        self._at = at
+        self._to = to
+        self._translation = xyz
+        self._rotation = rpy
+        self._update_transformation_matrix()
+
+    @property
+    def at(self):
+        return self._at
+
+    @at.setter
+    def at(self, value):
+        self._at = value
+
+    @property
+    def to(self):
+        return self._to
+
+    @to.setter
+    def to(self, value):
+        self._to = value
+
+    @property
+    def translation(self):
+        return self._translation
+
+    @translation.setter
+    def translation(self, value):
+        self._translation = np.array(value, dtype=float)
+        self._update_transformation_matrix()
+
+    @property
+    def rotation(self):
+        return self._rotation
+
+    @rotation.setter
+    def rotation(self, value):
+        self._rotation = np.array(value, dtype=float)
+        self._update_transformation_matrix()
+
+    def _update_transformation_matrix(self):
+        """ Method to update the transformation matrix based on the current rotation and translation values. """
+        rotation = R.from_euler('xyz', self._rotation, degrees=False)
+        rotation_matrix = rotation.as_matrix()
+        self.transformation_mtx = np.identity(4)
+        self.transformation_mtx[:3, :3] = rotation_matrix
+        self.transformation_mtx[:3, 3] = self._translation
+
+    def add_transformation(self, transformation_to_add):
+        transformation_mtx_to_add = transformation_to_add.transformation_mtx
+        new_transformation_mtx = np.dot(self.transformation_mtx, transformation_mtx_to_add)
+        translation_vector, euler_angles = extract_translation_and_euler_from_matrix(new_transformation_mtx)
+        new_transformation = Transformation(self.at, transformation_to_add.to, translation_vector, euler_angles)
+        return new_transformation
+
+    def invert_transformation(self):
+        inverse_rotation_matrix = self.transformation_mtx[:3, :3].T
+        inverse_translation_vector = -inverse_rotation_matrix @ self.transformation_mtx[:3, 3]
+        inverse_transformation_matrix = np.identity(4)
+        inverse_transformation_matrix[:3, :3] = inverse_rotation_matrix
+        inverse_transformation_matrix[:3, 3] = inverse_translation_vector
+        translation_vector, euler_angles = extract_translation_and_euler_from_matrix(inverse_transformation_matrix)
+        inverse_transformation = Transformation(self.to, self.at, translation_vector, euler_angles)
+        return inverse_transformation
 
 
-def _create_transformation_matrix(translation, rotation):
-    """Create a 4x4 homogeneous transformation matrix."""
-    T = np.eye(4)
-    T[:3, :3] = _euler_to_rotation_matrix(rotation[0], rotation[1], rotation[2])
-    T[:3, 3] = translation
-    return T
-
-
-def _transform_to_sensor(camera_extrinsic: Tuple[np.array, np.array]):
-    """Transform the raw to the sensor's coordinate frame."""
-    lidar_pov = np.array([0, 0, 0])
-    lidar_pose = np.array([0, 0, 0])
-    t1 = _create_transformation_matrix(lidar_pov, lidar_pose)
-    t2 = _create_transformation_matrix(camera_extrinsic[0], camera_extrinsic[1])
-    t2_to_1 = np.dot(np.linalg.inv(t2), t1)
-    return t2_to_1
+def extract_translation_and_euler_from_matrix(mtx):
+    translation_vector = mtx[:3, 3]
+    rotation_matrix = mtx[:3, :3]
+    rotation = R.from_matrix(rotation_matrix)
+    euler_angles_rad = rotation.as_euler('xyz', degrees=False)
+    return translation_vector, euler_angles_rad
 
 
 def find_linear_equation(pt1: Tuple[float, float], pt2: Tuple[float, float]):
@@ -99,10 +167,8 @@ class BottomPointCalculator:
     def __project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
         """Retrieve the projection matrix based on provided parameters."""
         point = np.stack([point['x'], point['y'], point['z']], axis=-1)
-        lidar_to_cam_tf_mtx = _transform_to_sensor((self.camera_xyz, self.camera_rpy))
-        # point_in_camera = np.dot(lidar_to_cam_tf_mtx,
-        #                          np.append(point[:3], 1))  # Nehmen Sie nur die ersten 3 Koordinaten
-        point_in_camera = self.proj_mtx.dot(self.rect_mtx.dot(lidar_to_cam_tf_mtx.dot(np.append(point[:3], 1))))
+        t_cam2_velo = Transformation('velo', 'cam', self.camera_xyz, self.camera_rpy)
+        point_in_camera = self.proj_mtx.dot(self.rect_mtx.dot(t_cam2_velo.transformation_mtx.dot(np.append(point[:3], 1))))
         # pixel = np.dot(self.camera_mtx, point_in_camera[:3])
         u = int(point_in_camera[0] / point_in_camera[2])
         v = int(point_in_camera[1] / point_in_camera[2])

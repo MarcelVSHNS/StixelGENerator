@@ -19,7 +19,7 @@ def main():
     organised by drive.
     """
     # config['phases']      , 'validation', 'testing'
-    for config_phase in ['training', 'validation', 'testing']:
+    for config_phase in ['testing']:
         phase = config_phase
         # every dataset consist all frames of one drive (kitti)
         dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=phase, first_only=True)

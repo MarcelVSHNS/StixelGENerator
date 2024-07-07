@@ -26,10 +26,9 @@ def main():
 
     points_on_img = draw_points_on_image(np.array(sample.image), lp_without_los)
     points_on_img.show()
-    """
+
     gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list, stixel_width=config['grid_step'])
     gt_stixel_img.show()
-    """
 
 
 if __name__ == "__main__":

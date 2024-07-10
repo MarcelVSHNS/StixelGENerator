@@ -2,7 +2,7 @@ import os
 import yaml
 from PIL import Image
 import pandas as pd
-from typing import List, Tuple
+from typing import List
 from datetime import datetime
 from dataloader import WaymoDataLoader as Dataset, KittiData as Data
 from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model

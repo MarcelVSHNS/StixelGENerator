@@ -1,6 +1,7 @@
 from typing import List, Dict, Tuple
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+from dataloader import CameraInfo
 
 
 class Transformation:
@@ -119,21 +120,16 @@ def get_range(x: float, y: float) -> float:
 
 
 class BottomPointCalculator:
-    def __init__(self, camera_xyz: np.array, camera_rpy: np.array, camera_mtx: np.array,
-                 proj_mtx: np.array, rect_mtx: np.array,
-                 los_offset=0, apply_gnd_offset=False):
-        self.camera_xyz = camera_xyz
-        self.camera_rpy = camera_rpy
-        self.camera_mtx = camera_mtx
-        self.proj_mtx = proj_mtx
-        self.rect_mtx = np.eye(4)
-        self.rect_mtx[:3, :3] = rect_mtx[:3, :3]
+    def __init__(self, cam_info: CameraInfo, los_offset=0, apply_gnd_offset=False):
+        self.camera_info = cam_info
         self.los_offset = los_offset
         self.apply_gnd_offset = apply_gnd_offset
 
     def calculate_bottom_stixel_by_line_of_sight(self, top_point: np.array, last_point: np.array) -> np.array:
         bottom_point = top_point.copy()
-        camera_pt = (get_range(self.camera_xyz[0], self.camera_xyz[1]), self.camera_xyz[2])
+        camera_pt = (get_range(self.camera_info.extrinsic.xyz[0],
+                               self.camera_info.extrinsic.xyz[1]),
+                     self.camera_info.extrinsic.xyz[2])
         last_stixel_pt = (get_range(last_point['x'], last_point['y']), last_point['z'])
         m, b = find_linear_equation(camera_pt, last_stixel_pt)
         bottom_point_range = get_range(bottom_point['x'], bottom_point['y'])
@@ -167,8 +163,8 @@ class BottomPointCalculator:
     def __project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
         """Retrieve the projection matrix based on provided parameters."""
         point = np.stack([point['x'], point['y'], point['z']], axis=-1)
-        t_cam2_lid = Transformation('velo', 'cam', self.camera_xyz, self.camera_rpy)
-        point_in_camera = self.proj_mtx.dot(self.rect_mtx.dot(t_cam2_lid.transformation_mtx.dot(np.append(point[:3], 1))))
+        # t_cam2_lid = Transformation('velo', 'cam', self.camera_info.extrinsic.xyz, self.camera_info.extrinsic.rpy)
+        point_in_camera = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(np.append(point[:3], 1))))
         # pixel = np.dot(self.camera_mtx, point_in_camera[:3])
         u = int(point_in_camera[0] / point_in_camera[2])
         v = int(point_in_camera[1] / point_in_camera[2])

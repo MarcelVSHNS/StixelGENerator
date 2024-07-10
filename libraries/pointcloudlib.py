@@ -7,6 +7,7 @@ import yaml
 from scipy.spatial import distance
 from libraries.helper import BottomPointCalculator
 from libraries import Stixel
+from dataloader import CameraInfo
 
 with open('libraries/pcl-config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
@@ -253,14 +254,10 @@ class Scanline:
         get_stixels(self) -> List[Stixel]:
             Returns a list of stixels found in the scanline.
     """
-    def __init__(self, points: np.array, camera_info, plane_model, image_size):
+    def __init__(self, points: np.array, camera_info: CameraInfo, plane_model, image_size):
         self.camera_info = camera_info
         self.plane_model = plane_model
-        self.bottom_pt_calc = BottomPointCalculator(camera_xyz=self.camera_info.extrinsic.xyz,
-                                                    camera_rpy=self.camera_info.extrinsic.rpy,
-                                                    camera_mtx=self.camera_info.K,
-                                                    proj_mtx=self.camera_info.P,
-                                                    rect_mtx=self.camera_info.R)
+        self.bottom_pt_calc = BottomPointCalculator(cam_info=self.camera_info)
         self.image_size = image_size
         self.points: np.array = np.array(points, dtype=point_dtype)
         self.objects: List[Cluster] = []

@@ -11,10 +11,12 @@ This repo provides the basic toolset to generate a Stixel World from LiDAR. It i
 the [StixelNExT](https://github.com/MarcelVSHNS/StixelNExT) 2D estimator as well as for the 3D approach: [StixelNExT Pro](https://github.com/MarcelVSHNS/StixelNExT_Pro).
 
 ### Usage with Waymo or KITTI
-After cloning the repo to your local machine, you need to configure your paths in the `config.yaml`-file and select the 
-dataset with the import in `/generate.py` like:
+1. Clone the repo to your local machine
+2. Set up a virtual environment with `python -m venv venv` (we tested on Python 3.10) or Anaconda respectively `conda create -n StixelGEN python=3.9`. Activate with `source venv/bin/activate`/ `conda activate StixelGEN`
+3. Install requirements with `pip install -r requirements.txt`/ `conda install --file requirements.txt` 
+4. Configure the project: adapt your paths in the `config.yaml`-file and select the dataset with the import in `/generate.py` like:
 ```python
-from dataloader import WaymoDataloader as Dataset   # or KittiDataloader
+from dataloader import WaymoDataLoader as Dataset   # or KittiDataLoader
 ```
 After that you can test the functionalities with `utility/explore.py` or run `/generate.py` to generate Stixel Worlds.
 
@@ -42,6 +44,10 @@ For your own usage its necessary to write a new Dataloader for what the `dataloa
 * Context information (image size)
 * OPTIONAL: Stereo Images (right camera)
 * OPTIONAL: LiDAR Calibration (in case of global T Matrices)
+
+#### Fine tuning
+You can heavily increase the results with the parameters from `libraries/pcl-config.yaml`. 
+Documentation for the functions are provided by the code. The los (line of sight) parameter can cause huge holes!
 
 ### Utilities
 * explore: A simple workspace script to use and inspect the derived data, step by step.

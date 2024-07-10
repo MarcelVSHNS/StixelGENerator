@@ -1,10 +1,12 @@
 numpy
 matplotlib
-# opencv-python
+opencv-python
 Pillow
 pandas
 pyyaml
-# open3d
+open3d
 scikit-learn
 scipy
-# pykitti
+pykitti
+tensorflow==2.11.0
+waymo-open-dataset-tf-2-11-0

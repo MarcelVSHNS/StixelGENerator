@@ -4,7 +4,7 @@ from PIL import Image
 import pandas as pd
 from typing import List, Tuple
 from datetime import datetime
-from dataloader import KittiDataLoader as Dataset, KittiData as Data
+from dataloader import WaymoDataLoader as Dataset, KittiData as Data
 from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model
 
 # open Config
@@ -19,7 +19,7 @@ def main():
     organised by drive.
     """
     # config['phases']      , 'validation', 'testing'
-    for config_phase in ['testing']:
+    for config_phase in ['testing', 'validation', 'training']:
         phase = config_phase
         # every dataset consist all frames of one drive (kitti)
         dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=phase, first_only=True)
@@ -63,12 +63,12 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
             break
         for frame in data_chunk:
             lp_without_ground, plane_model = remove_ground(frame.points)
-            lp_without_far_pts = remove_far_points(lp_without_ground)
-            lp_plane_model_corrected = remove_pts_below_plane_model(lp_without_far_pts, plane_model)
-            lp_without_los = remove_line_of_sight(lp_plane_model_corrected, frame.camera_pov)
+            lidar_pts = remove_far_points(lp_without_ground)
+            lidar_pts = remove_pts_below_plane_model(lidar_pts, plane_model)
+            # lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz)
             stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
                                          plane_model=plane_model)
-            stixel_list = stixel_gen.generate_stixel(lp_without_los)
+            stixel_list = stixel_gen.generate_stixel(lidar_pts)
             # Export a single Stixel Wold representation and the relative images
             _export_single_dataset(image_left=frame.image,
                                    image_right=frame.image_right if dataloader.stereo_available else None,
@@ -98,7 +98,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
-    label_path = os.path.join(base_path, "targets_from_semseg")
+    label_path = os.path.join(base_path, "targets")
     os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     # save images
@@ -127,10 +127,8 @@ def _chunks(lst, n) -> List[List[int]]:
         lst: A list of integers or other data types.
         n: An integer representing the size of each chunk.
     Returns:
-        A list of lists, where each sublist contains 'n' elements from the input list 'lst'. The last sublist may contain fewer than 'n' elements if the length of the input list is not divisible by 'n'.
-    Example:
-        >>> _chunks([1, 2, 3, 4, 5, 6, 7, 8, 9], 3)
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        A list of lists, where each sublist contains 'n' elements from the input list 'lst'. The last sublist may
+        contain fewer than 'n' elements if the length of the input list is not divisible by 'n'.
     """
     for i in range(0, len(lst), n):
         yield lst[i:i + n]

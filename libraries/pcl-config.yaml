@@ -1,10 +1,10 @@
 rm_gnd:
-  z_max: -1.0
+  z_max: 1.0          # kitti: -1.0
   distance_threshold: 0.14
   ransac_n: 3
   num_iterations: 10000
 rm_los:
-  radius: 270000
+  radius: 8000000    #ameise: 270000
   x: 0.0
   y: 0.0
   z: 0.0

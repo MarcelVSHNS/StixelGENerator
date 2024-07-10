@@ -114,7 +114,7 @@ def find_linear_equation(pt1: Tuple[float, float], pt2: Tuple[float, float]):
     return m, b
 
 
-def get_range(x: float,y: float) -> float:
+def get_range(x: float, y: float) -> float:
     return np.sqrt(x ** 2 + y ** 2)
 
 
@@ -167,8 +167,8 @@ class BottomPointCalculator:
     def __project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
         """Retrieve the projection matrix based on provided parameters."""
         point = np.stack([point['x'], point['y'], point['z']], axis=-1)
-        t_cam2_velo = Transformation('velo', 'cam', self.camera_xyz, self.camera_rpy)
-        point_in_camera = self.proj_mtx.dot(self.rect_mtx.dot(t_cam2_velo.transformation_mtx.dot(np.append(point[:3], 1))))
+        t_cam2_lid = Transformation('velo', 'cam', self.camera_xyz, self.camera_rpy)
+        point_in_camera = self.proj_mtx.dot(self.rect_mtx.dot(t_cam2_lid.transformation_mtx.dot(np.append(point[:3], 1))))
         # pixel = np.dot(self.camera_mtx, point_in_camera[:3])
         u = int(point_in_camera[0] / point_in_camera[2])
         v = int(point_in_camera[1] / point_in_camera[2])

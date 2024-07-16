@@ -19,10 +19,12 @@ def main():
     organised by drive.
     """
     # config['phases']      , 'validation', 'testing'
-    for config_phase in ['testing', 'validation', 'training']:
+    for config_phase in ['validation', 'training']:
         phase = config_phase
+        with open(f"failures_{phase}.txt", "w") as file:
+            file.write("Record names by phase, which failed to open: \n")
         # every dataset consist all frames of one drive (kitti)
-        dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=phase, first_only=True)
+        dataset: Dataset = Dataset(data_dir=config['raw_data_path'], phase=phase, first_only=False)
         """ Multi Threading - deprecated
         process_workload: int = int(len(dataset) / config['num_threads'])
         assert process_workload > 0, "Too less files for num_threads"
@@ -52,20 +54,24 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
         dataloader: The dataset object that provides access to the data.
         phase: The phase of data processing.
     """
+    with open(f"failures_{phase}.txt", "a") as file:
+        file.write(f"gsutil -m cp \\ \n")
     # work on a list of assigned indices
     for index in index_list:
         print(f'index: {index} in progress ...')
         # iterate over all frames inside the record
         frame_num: int = 0
-        data_chunk: List[Data] = dataloader[index]
-
+        try:
+            data_chunk: List[Data] = dataloader[index]
+        except:
+            continue
         if data_chunk is None:
             break
         for frame in data_chunk:
             lp_without_ground, plane_model = remove_ground(frame.points)
             lidar_pts = remove_far_points(lp_without_ground)
             lidar_pts = remove_pts_below_plane_model(lidar_pts, plane_model)
-            lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz)
+            # lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz)
             stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
                                          plane_model=plane_model)
             stixel_list = stixel_gen.generate_stixel(lidar_pts)
@@ -74,13 +80,15 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
                                    image_right=frame.image_right if dataloader.stereo_available else None,
                                    stixels=stixel_list,
                                    dataset_name=dataloader.name,
-                                   name=frame.name,
+                                   name=f"{frame.name}_{str(frame_num)}",
                                    export_phase=phase)
+            # print(f"Frame {frame_num + 1} from {len(data_chunk)} done.")
             frame_num += 1
         print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
         print("Time elapsed: {}".format(step_time))
-
+    with open(f"failures_{phase}.txt", "a") as file:
+        file.write(f"  . \n")
 
 def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, export_phase: str, image_right: Image = None):
     """
@@ -96,7 +104,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     # define paths
     base_path = os.path.join(config['data_path'], dataset_name, export_phase)
     os.makedirs(base_path, exist_ok=True)
-    left_img_path: str = os.path.join(base_path, "STEREO_LEFT")
+    left_img_path: str = os.path.join(base_path, "FRONT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
     label_path = os.path.join(base_path, "targets")
     os.makedirs(left_img_path, exist_ok=True)

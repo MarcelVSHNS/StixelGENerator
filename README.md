@@ -12,7 +12,7 @@ the [StixelNExT](https://github.com/MarcelVSHNS/StixelNExT) 2D estimator as well
 
 ### Usage with Waymo or KITTI
 1. Clone the repo to your local machine
-2. Set up a virtual environment with `python -m venv venv` (we tested on Python 3.10) or Anaconda respectively `conda create -n StixelGEN python=3.9`. Activate with `source venv/bin/activate`/ `conda activate StixelGEN`
+2. Set up a virtual environment with `python -m venv venv` (we tested on Python 3.10) or Anaconda respectively `conda create -n StixelGEN python=3.10`. Activate with `source venv/bin/activate`/ `conda activate StixelGEN`
 3. Install requirements with `pip install -r requirements.txt`/ `conda install --file requirements.txt` 
 4. Configure the project: adapt your paths in the `config.yaml`-file and select the dataset with the import in `/generate.py` like:
 ```python
@@ -41,7 +41,7 @@ For your own usage its necessary to write a new Dataloader for what the `dataloa
   * Projection Matrix
   * Rectify Matrix
   * Transformation Matrix
-* Context information (image size)
+* Context information (image size, dataset name, ...)
 * OPTIONAL: Stereo Images (right camera)
 * OPTIONAL: LiDAR Calibration (in case of global T Matrices)
 

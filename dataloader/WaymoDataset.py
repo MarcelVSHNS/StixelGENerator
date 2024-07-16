@@ -110,7 +110,8 @@ class WaymoDataLoader:
             first_only: doesn't load the full ~20 frames to return a raw sample if True
         """
         super().__init__()
-        self.name: str = "waymo-open-dataset"
+        self.name: str = "waymo-od"
+        self.phase: str = phase
         self.data_dir = os.path.join(data_dir, "waymo", phase)
         self.camera_segmentation_only: bool = camera_segmentation_only
         self.first_only: bool = first_only
@@ -121,7 +122,14 @@ class WaymoDataLoader:
         print(f"Found {len(self.record_map)} tf record files")
 
     def __getitem__(self, idx):
-        frames = self.unpack_single_tfrecord_file_from_path(self.record_map[idx])
+        try:
+            frames = self.unpack_single_tfrecord_file_from_path(self.record_map[idx])
+        except Exception as e:
+            with open(f"failures_{self.phase}.txt", "a") as file:
+                file_name = os.path.basename(self.record_map[idx])
+                file.write(f"  gs://waymo_open_dataset_v_1_4_3/individual_files/{self.phase}/{file_name} \\ \n")
+            print(f"Fail to open {file_name}, documented.")
+            raise e
         waymo_data_chunk = []
         for tf_frame in frames:
             # start_time = datetime.now()
@@ -152,7 +160,7 @@ class WaymoDataLoader:
                 if frame.images[0].camera_segmentation_label.panoptic_label:
                     frame_list.append(frame)
             else:
-                if frame_num % 50 == 0:
+                if frame_num % 10 == 0:
                     frame = open_dataset.Frame()
                     frame.ParseFromString(bytearray(data.numpy()))
                     frame_list.append(frame)

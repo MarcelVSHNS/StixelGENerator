@@ -15,6 +15,6 @@ exploring:
   frame_num: -1
   col: 180
 explore_data_deep: False
-grid_step: 4
+grid_step: 8
 SemSeg:
   for_dataset: kitti

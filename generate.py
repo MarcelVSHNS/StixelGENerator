@@ -121,10 +121,9 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
                             int(stixel.column),
                             int(stixel.top_row),
                             int(stixel.bottom_row),
-                            int(stixel.position_class.value),
                             round(stixel.depth, 1)])
     target: pd.DataFrame = pd.DataFrame(target_list)
-    target.columns = ['img_path', 'x', 'yT', 'yB', 'class', 'depth']
+    target.columns = ['img', 'u', 'vT', 'vB', 'd']
     # save .csv
     target.to_csv(os.path.join(label_path, name+".csv"), index=False)
 

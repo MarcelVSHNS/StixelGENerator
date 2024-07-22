@@ -48,7 +48,7 @@ class Stixel:
         Raises:
             AssertionError: If the stixel is not within the image bounds or does not align with the grid.
     """
-    def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 4):
+    def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 8):
         self.column = top_point['proj_x']
         self.top_row = top_point['proj_y']
         self.bottom_row = bottom_point['proj_y']

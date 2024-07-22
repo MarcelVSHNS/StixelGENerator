@@ -72,8 +72,9 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
             lidar_pts = remove_far_points(lp_without_ground)
             lidar_pts = remove_pts_below_plane_model(lidar_pts, plane_model)
             # lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz)
+            # camera is direct under lidar, no los
             stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
-                                         plane_model=plane_model)
+                                         plane_model=plane_model, stixel_width=config['grid_step'])
             stixel_list = stixel_gen.generate_stixel(lidar_pts)
             # Export a single Stixel Wold representation and the relative images
             _export_single_dataset(image_left=frame.image,
@@ -89,6 +90,7 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
         print("Time elapsed: {}".format(step_time))
     with open(f"failures_{phase}.txt", "a") as file:
         file.write(f"  . \n")
+
 
 def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, export_phase: str, image_right: Image = None):
     """

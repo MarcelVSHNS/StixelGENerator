@@ -118,7 +118,7 @@ def draw_points_on_image(image, points, y_offset=0):
     return Image.fromarray(image)
 
 
-def draw_clustered_points_on_image(image, cluster_list, y_offset=32):
+def draw_clustered_points_on_image(image, cluster_list, y_offset=0):
     for i, cluster_points in enumerate(cluster_list):
         color = colors[i % len(colors)]
         for point in cluster_points:

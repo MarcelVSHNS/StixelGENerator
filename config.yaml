@@ -9,10 +9,8 @@ phases:
 data_path: /media/marcel/Data1/Datasets
 raw_data_path: /media/marcel/Data1/Raw
 exploring:
-  view: 1
-  random_idx: False
-  idx: 0
-  frame_num: -1
+  idx: null
+  frame_num: 0
   col: 180
 explore_data_deep: False
 grid_step: 8

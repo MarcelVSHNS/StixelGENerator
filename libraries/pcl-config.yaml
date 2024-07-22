@@ -1,17 +1,17 @@
 rm_gnd:
-  z_max: 1.0          # kitti: -1.0
-  distance_threshold: 0.14
+  z_max: 0.3          # kitti: -1.0
+  distance_threshold: 0.24    # ameise: 0.14
   ransac_n: 3
   num_iterations: 10000
 rm_los:
-  radius: 8000000    #ameise: 270000
+  radius: 30000000    #ameise: 270000
   x: 0.0
   y: 0.0
   z: 0.0
 rm_far_pts:
-  range_threshold: 100.0
+  range_threshold: 50.0
 group_angle:
-  eps: 0.00092
+  eps: 0.0003        # ameise: 0.00092
   min_samples: 1
 cluster:
   to_ground_detection_threshold: 1.0

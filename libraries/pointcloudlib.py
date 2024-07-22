@@ -254,7 +254,7 @@ class Scanline:
         get_stixels(self) -> List[Stixel]:
             Returns a list of stixels found in the scanline.
     """
-    def __init__(self, points: np.array, camera_info: CameraInfo, plane_model, image_size):
+    def __init__(self, points: np.array, camera_info: CameraInfo, plane_model, image_size, stixel_width):
         self.camera_info = camera_info
         self.plane_model = plane_model
         self.bottom_pt_calc = BottomPointCalculator(cam_info=self.camera_info)
@@ -262,6 +262,7 @@ class Scanline:
         self.points: np.array = np.array(points, dtype=point_dtype)
         self.objects: List[Cluster] = []
         self.last_cluster_top_stixel = None
+        self.stixel_width = stixel_width
 
     def _cluster_objects(self):
         # Compute the radial distance r
@@ -321,7 +322,8 @@ class Scanline:
                         bottom_point = self.bottom_pt_calc.calculate_bottom_stixel_by_line_of_sight(top_point,
                                                                                                     self.last_cluster_top_stixel.top_point)
                     pos_cls = StixelClass.TOP if last_cluster_stixel_x is None else StixelClass.OBJECT
-                    new_stixel = Stixel(top_point=top_point, bottom_point=bottom_point, position_class=pos_cls, image_size=self.image_size)
+                    new_stixel = Stixel(top_point=top_point, bottom_point=bottom_point, position_class=pos_cls,
+                                        image_size=self.image_size, grid_step=self.stixel_width)
                     cluster.stixels.append(new_stixel)
                     last_cluster_stixel_x = new_stixel
                     if cluster.is_standing_on_ground and last_cluster_stixel_x is None:
@@ -347,11 +349,12 @@ class StixelGenerator:
     Methods:
         generate_stixel: Generates stixels from laser points.
     """
-    def __init__(self, camera_info, img_size, plane_model):
+    def __init__(self, camera_info, img_size, plane_model, stixel_width):
         self.camera_info = camera_info
         self.plane_model = plane_model
         self.img_size = img_size
         self.laser_scanlines = []
+        self.stixel_width = stixel_width
 
     def generate_stixel(self, laser_points: np.array) -> List[Stixel]:
         laser_points_by_angle = group_points_by_angle(laser_points)
@@ -360,6 +363,7 @@ class StixelGenerator:
             column = Scanline(angle_laser_points,
                               camera_info=self.camera_info,
                               plane_model=self.plane_model,
-                              image_size=self.img_size)
+                              image_size=self.img_size,
+                              stixel_width = self.stixel_width)
             stixels.append(column.get_stixels())
         return [stixel for sublist in stixels for stixel in sublist]

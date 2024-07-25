@@ -1,4 +1,4 @@
-phase: testing
+phase: training
 # testing
 # training
 # validation
@@ -6,11 +6,11 @@ phases:
   - training
   - validation
   - testing
-data_path: /media/marcel/Data1/Datasets
+data_path: /home/marcel/workspace/datasets/waymo-od
 raw_data_path: /media/marcel/Data1/Raw
 exploring:
-  idx: null
-  frame_num: 0
+  idx: 111
+  frame_num: 12
   col: 180
 explore_data_deep: False
 grid_step: 8

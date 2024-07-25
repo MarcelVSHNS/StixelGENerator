@@ -118,7 +118,7 @@ class WaymoDataLoader:
         self.img_size = {'width': 1920, 'height': 1280}
         self.stereo_available: bool = False
         # find files in folder (data_dir) which fit to pattern endswith-'.tfrecord'
-        self.record_map = glob.glob(os.path.join(self.data_dir, '*.tfrecord'))
+        self.record_map = sorted(glob.glob(os.path.join(self.data_dir, '*.tfrecord')))
         print(f"Found {len(self.record_map)} tf record files")
 
     def __getitem__(self, idx):

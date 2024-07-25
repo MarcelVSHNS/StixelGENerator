@@ -18,8 +18,8 @@ def main():
     Basic start of the project. Configure phase and load the related data. E.g. Kitti dataloader provides datasets
     organised by drive.
     """
-    # config['phases']      , 'validation', 'testing'
-    for config_phase in ['validation', 'training']:
+    # config['phases']      'validation', 'testing', 'training'
+    for config_phase in ['testing']:
         phase = config_phase
         with open(f"failures_{phase}.txt", "w") as file:
             file.write("Record names by phase, which failed to open: \n")
@@ -68,24 +68,28 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
         if data_chunk is None:
             break
         for frame in data_chunk:
-            lp_without_ground, plane_model = remove_ground(frame.points)
-            lidar_pts = remove_far_points(lp_without_ground)
-            lidar_pts = remove_pts_below_plane_model(lidar_pts, plane_model)
-            # lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz)
-            # camera is direct under lidar, no los
-            stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
-                                         plane_model=plane_model, stixel_width=config['grid_step'])
-            stixel_list = stixel_gen.generate_stixel(lidar_pts)
-            # Export a single Stixel Wold representation and the relative images
-            _export_single_dataset(image_left=frame.image,
-                                   image_right=frame.image_right if dataloader.stereo_available else None,
-                                   stixels=stixel_list,
-                                   dataset_name=dataloader.name,
-                                   name=f"{frame.name}_{str(frame_num)}",
-                                   export_phase=phase)
-            # print(f"Frame {frame_num + 1} from {len(data_chunk)} done.")
-            frame_num += 1
-        print(f"Record-file with idx {index + 1}/ {len(index_list)} ({round(100/len(index_list)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
+            try:
+                lp_without_ground, plane_model = remove_ground(frame.points)
+                lidar_pts = remove_far_points(lp_without_ground)
+                lidar_pts = remove_pts_below_plane_model(lidar_pts, plane_model)
+                # lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz)
+                # camera is direct under lidar, no los
+                stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
+                                             plane_model=plane_model, stixel_width=config['grid_step'])
+                stixel_list = stixel_gen.generate_stixel(lidar_pts)
+                # Export a single Stixel Wold representation and the relative images
+                _export_single_dataset(image_left=frame.image,
+                                       image_right=frame.image_right if dataloader.stereo_available else None,
+                                       stixels=stixel_list,
+                                       dataset_name=dataloader.name,
+                                       name=f"{frame.name}_{str(frame_num)}",
+                                       export_phase=phase)
+                # print(f"Frame {frame_num + 1} from {len(data_chunk)} done.")
+                frame_num += 1
+            except Exception as e:
+                print(f"{frame.name}_{str(frame_num)} failed due to {e}.")
+                continue
+        print(f"Record-file with idx {index + 1}/ {len(dataloader)} ({round(100/len(dataloader)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
         print("Time elapsed: {}".format(step_time))
     with open(f"failures_{phase}.txt", "a") as file:
@@ -108,7 +112,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "FRONT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
-    label_path = os.path.join(base_path, "targets")
+    label_path = os.path.join(base_path, "Stixel")
     os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     # save images

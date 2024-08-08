@@ -2,6 +2,7 @@ from typing import List, Dict, Tuple
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from dataloader import CameraInfo
+from libraries.Stixel import point_dtype, point_dtype_sph
 
 
 class Transformation:
@@ -119,8 +120,37 @@ def get_range(x: float, y: float) -> float:
     return np.sqrt(x ** 2 + y ** 2)
 
 
+def cart_2_sph(point: np.array):
+    x, y, z = point['x'], point['y'], point['z']
+    hxy = np.hypot(x, y)
+    r = np.hypot(hxy, z)
+    el = np.arctan2(z, hxy)
+    az = np.arctan2(y, x)
+    point_sph = np.array(
+        (r, az, el, point['proj_x'], point['proj_y']),
+        dtype=point_dtype_sph
+    )
+    return point_sph
+
+
+def sph_2_cart(point: np.array):
+    r, az, el = point['r'], point['az'], point['el']
+    r_cos_theta = r * np.cos(el)
+    x = r_cos_theta * np.cos(az)
+    y = r_cos_theta * np.sin(az)
+    z = r * np.sin(el)
+    point_cart = np.array(
+        (x, y, z, point['proj_x'], point['proj_y']),
+        dtype=point_dtype
+    )
+    return point_cart
+
+
 class BottomPointCalculator:
-    def __init__(self, cam_info: CameraInfo, los_offset=0, apply_gnd_offset=False):
+    def __init__(self,
+                 cam_info: CameraInfo,
+                 los_offset=0,
+                 apply_gnd_offset=False):
         self.camera_info = cam_info
         self.los_offset = los_offset
         self.apply_gnd_offset = apply_gnd_offset
@@ -135,7 +165,7 @@ class BottomPointCalculator:
         bottom_point_range = get_range(bottom_point['x'], bottom_point['y'])
         new_bottom_z = (m * bottom_point_range + b)
         bottom_point['z'] = new_bottom_z
-        x_proj, y_proj = self.__project_point_into_image(bottom_point)
+        x_proj, y_proj = self.project_point_into_image(bottom_point)
         # assert x_proj == top_point['proj_x']
         bottom_point['proj_y'] = y_proj - self.los_offset
         return bottom_point
@@ -143,7 +173,7 @@ class BottomPointCalculator:
     def calculate_bottom_stixel_to_reference_height(self, top_point: np.array) -> np.array:
         bottom_point = top_point.copy()
         bottom_point['z'] = top_point['z_ref']
-        x_proj, y_proj = self.__project_point_into_image(bottom_point)
+        x_proj, y_proj = self.project_point_into_image(bottom_point)
         # assert x_proj == top_point['proj_x']
         if self.apply_gnd_offset:
             m = -0.25
@@ -160,11 +190,11 @@ class BottomPointCalculator:
         bottom_point['proj_y'] = y_proj
         return bottom_point
 
-    def __project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
+    def project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
         """Retrieve the projection matrix based on provided parameters."""
-        point = np.stack([point['x'], point['y'], point['z']], axis=-1)
+        pt = np.stack([point['x'], point['y'], point['z']], axis=-1)
         # t_cam2_lid = Transformation('velo', 'cam', self.camera_info.extrinsic.xyz, self.camera_info.extrinsic.rpy)
-        point_in_camera = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(np.append(point[:3], 1))))
+        point_in_camera = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(np.append(pt[:3], 1))))
         # pixel = np.dot(self.camera_mtx, point_in_camera[:3])
         u = int(point_in_camera[0] / point_in_camera[2])
         v = int(point_in_camera[1] / point_in_camera[2])

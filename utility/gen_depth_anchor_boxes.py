@@ -33,10 +33,11 @@ def depth_clustering_per_row(folder_path):
 
 
 def main():
-    path = os.path.join(config['data_path'], "waymo-od", config['phase'], "Stixel")
+    # it's always just from training; it's the pattern/ basic template
+    path = os.path.join(config['data_path'], "training", "Stixel")
     depths = depth_clustering_per_row(path)
-    # Near to the maximum distance from plc-config (50 - 2:padding left-right). Causes a target matrix of [4, 48, 240]
-    num_clusters = 48
+    # refer to the maximum distance from plc-config (e.g. 50, means 50 classes for a resolution of 1 m)
+    num_clusters = 64
 
     anchors_by_col = []
     for i in range(len(depths)):
@@ -51,7 +52,7 @@ def main():
     df = pd.DataFrame(anchors_by_col)
     df.columns = [str(i) for i in range(num_clusters)]
     df = df.T
-    df.to_csv(os.path.join(config['data_path'], "waymo-od", config['phase'], "depth_anchors.csv"), index=True)
+    df.to_csv(os.path.join(config['data_path'], "depth_anchors.csv"), index=True)
 
     """
     # Visualisation

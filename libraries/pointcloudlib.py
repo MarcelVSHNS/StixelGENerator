@@ -1,37 +1,42 @@
 import open3d as o3d
 import numpy as np
-from sklearn.cluster import DBSCAN
-from typing import List
+from sklearn.cluster import DBSCAN, KMeans
+from typing import List, Dict
 from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass
 import yaml
 from scipy.spatial import distance
-from libraries.helper import BottomPointCalculator
+from libraries.helper import BottomPointCalculator, cart_2_sph, sph_2_cart
 from libraries import Stixel
+import pandas as pd
 from dataloader import CameraInfo
 
 with open('libraries/pcl-config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 
 
-def remove_ground(points: np.array) -> np.array:
+def remove_ground(points: np.array,
+                  param: Dict[str, float]
+                  ) -> np.array:
     """
     Args:
+        param: ['rm_gnd'] contain fields: z_max, distance_threshold, ransac_n, num_iterations
         points: A numpy array of shape (N, 3) representing the 3D coordinates of points.
     Returns:
         filtered_points: A numpy array of shape (M, 3) containing the filtered points after removing the ground.
         plane_model: A tuple containing the parameters of the detected ground plane.
     """
+    # TODO: add multiple planes (2x)
     pcd = o3d.geometry.PointCloud()
     xyz = np.vstack((points['x'], points['y'], points['z'])).T
     pcd.points = o3d.utility.Vector3dVector(xyz)
-    z_filter = (xyz[:, 2] <= config['rm_gnd']['z_max'])
+    z_filter = (xyz[:, 2] <= param['z_max'])
     filtered_xyz = xyz[z_filter]
     filtered_pcd = o3d.geometry.PointCloud()
     filtered_pcd.points = o3d.utility.Vector3dVector(filtered_xyz)
     plane_model, inliers = filtered_pcd.segment_plane(
-        distance_threshold=config['rm_gnd']['distance_threshold'],
-        ransac_n=config['rm_gnd']['ransac_n'],
-        num_iterations=config['rm_gnd']['num_iterations'])
+        distance_threshold=param['distance_threshold'],
+        ransac_n=param['ransac_n'],
+        num_iterations=param['num_iterations'])
     inlier_mask = np.zeros(len(xyz), dtype=bool)
     inlier_mask[np.where(z_filter)[0][inliers]] = True
     filtered_points = points[~inlier_mask]
@@ -41,26 +46,27 @@ def remove_ground(points: np.array) -> np.array:
     return filtered_points, plane_model
 
 
-def remove_line_of_sight(points: np.array, camera_pose=None):
+def remove_line_of_sight(points: np.array,
+                         camera_pose: np.array,
+                         param: Dict[str, float]
+                         ) -> np.array:
     """
     Removes points that are in line of sight of a camera.
     Args:
+        param: ['rm_los'] with field: radius
         points: A numpy array containing structured data with fields 'x', 'y', 'z'.
-        camera_pose: Optional camera pose as a list of [x, y, z]. If not provided, it will use the default camera pose
-        from the configuration.
+        camera_pose: Camera translation as a list of [x, y, z] to the LiDAR.
     Returns:
-        filtered_points: A numpy array containing structured data with the same fields as 'points', with the points
-        that are in line of sight removed.
+        filtered_points: A numpy array containing structured data with the same fields as 'points',
+        with the points that are in line of sight removed.
     """
+    if param['disable']:
+        return points
     # Manually extract x, y, z raw from the structured array
     pcd = o3d.geometry.PointCloud()
     xyz = np.vstack((points['x'], points['y'], points['z'])).T
     pcd.points = o3d.utility.Vector3dVector(xyz)
-    if camera_pose is None:
-        camera_pose = [config['rm_los']['x'],
-                       config['rm_los']['y'],
-                       config['rm_los']['z']]
-    radius = config['rm_los']['radius']
+    radius = param['radius']
     _, pt_map = pcd.hidden_point_removal(camera_pose, radius)
     mask = np.zeros(len(np.asarray(points)), dtype=bool)
     mask[pt_map] = True
@@ -68,9 +74,10 @@ def remove_line_of_sight(points: np.array, camera_pose=None):
     return filtered_points
 
 
-def remove_far_points(points: np.array) -> np.array:
+def remove_far_points(points: np.array, param: Dict[str, float]) -> np.array:
     """
     Args:
+        param: ['rm_far_pts'] with field: range_threshold
         points (np.array): An array of points, with each point represented as a structured array containing the 'x' and
          'y' coordinates.
     Returns:
@@ -93,7 +100,7 @@ def remove_far_points(points: np.array) -> np.array:
     # Calculate the distance (range) from x and y for each point
     ranges = np.sqrt(points['x'] ** 2 + points['y'] ** 2)
     # Filter out points where the distance is greater than the threshold
-    filtered_points = points[ranges <= config['rm_far_pts']['range_threshold']]
+    filtered_points = points[ranges <= param['range_threshold']]
     return filtered_points
 
 
@@ -116,10 +123,14 @@ def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
     return np.array(filtered_points)
 
 
-def group_points_by_angle(points: np.array) -> List[np.array]:
+def group_points_by_angle(points: np.array,
+                          param: Dict[str, float],
+                          camera_info: CameraInfo
+                          ) -> List[np.array]:
     """
     Groups points based on their azimuth angles.
     Args:
+        param: ['group_angle'] with fields: eps, min_samples
         points: A numpy array of points, where each point has 'x' and 'y' coordinates.
     Returns:
         A list of numpy arrays, where each array represents a cluster of points with similar azimuth angles.
@@ -131,17 +142,27 @@ def group_points_by_angle(points: np.array) -> List[np.array]:
     sorted_azimuth_angles = np.array([angle for point, angle in sorted_pairs])
     # azimuth_angles = np.mod(azimuth_angles, 2 * np.pi)
     # Perform DBSCAN clustering based on azimuth angles only
-    db = DBSCAN(eps=config['group_angle']['eps'],
-                min_samples=config['group_angle']['min_samples']).fit(sorted_azimuth_angles.reshape(-1, 1))
-    # Obtain cluster labels
-    labels = db.labels_
+    df = pd.DataFrame(sorted_azimuth_angles.reshape(-1, 1), columns=['azimuth'])
+    bins = np.linspace(param['min_angle'], param['max_angle'], param['num_groups'] + 1)
+    df['cluster'], _cluster = pd.cut(df['azimuth'], bins=bins, labels=False, retbins=True)
+    labels = df['cluster'].to_numpy()
+    interval_means = [(_cluster[i] + _cluster[i + 1]) / 2 for i in range(len(_cluster) - 1)]
     # Group points based on labels and compute average angles
     # create a list for every found cluster, if you found not matched points subtract 1
-    angle_cluster = [[] for _ in range(len(set(labels)) - (1 if -1 in labels else 0))]
+    angle_cluster = [[] for _ in range(int(param['num_groups']))]
+    angle_cluster = [[] for _ in range(int(param['num_groups']) - (1 if np.nan in labels else 0))]
     # fill in the points
+    btm_calc = BottomPointCalculator(camera_info)
     for point, label in zip(sorted_points, labels):
-        if label != -1:  # if you have not clustered points
-            angle_cluster[label].append(point)
+        if not np.isnan(label):
+            angle_cluster[int(label)].append(point)
+    for angle, cluster_mean in zip(angle_cluster, interval_means):
+        for i, point in enumerate(angle):
+            pt_sph = cart_2_sph(point)
+            pt_sph['az'] = cluster_mean
+            pt_cart = sph_2_cart(pt_sph)
+            proj_x, proj_y = btm_calc.project_point_into_image(pt_cart)
+            angle[i] = np.array(tuple([pt_cart['x'], pt_cart['y'], pt_cart['z'], proj_x, proj_y]), dtype=point_dtype)
     return angle_cluster
 
 
@@ -208,6 +229,11 @@ class Cluster:
         return referenced_points
 
     def check_object_position(self):
+        """ Detects if an object stands on the ground or not.
+
+        Returns:
+
+        """
         self.sort_points_top_obj_stixel()
         cluster_point = self.points[-1]
         a, b, c, d = self.plane_model
@@ -254,7 +280,12 @@ class Scanline:
         get_stixels(self) -> List[Stixel]:
             Returns a list of stixels found in the scanline.
     """
-    def __init__(self, points: np.array, camera_info: CameraInfo, plane_model, image_size, stixel_width):
+    def __init__(self, points: np.array,
+                 camera_info: CameraInfo,
+                 plane_model: np.array,
+                 image_size: Dict[str, int],
+                 stixel_width: int,
+                 param: Dict[str, int]):
         self.camera_info = camera_info
         self.plane_model = plane_model
         self.bottom_pt_calc = BottomPointCalculator(cam_info=self.camera_info)
@@ -263,6 +294,7 @@ class Scanline:
         self.objects: List[Cluster] = []
         self.last_cluster_top_stixel = None
         self.stixel_width = stixel_width
+        self.param = param
 
     def _cluster_objects(self):
         # Compute the radial distance r
@@ -277,8 +309,8 @@ class Scanline:
         # Check if enough raw points are present for clustering
         if len(db_data) > 1:
             # Apply the DBSCAN clustering algorithm
-            db = DBSCAN(eps=100,
-                        min_samples=config['scanline_cluster_obj']['min_samples'],
+            db = DBSCAN(eps=self.param['cluster_eps'],
+                        min_samples=self.param['min_samples'],
                         metric=_euclidean_distance_with_raising_eps).fit(db_data)
             labels = db.labels_
         else:
@@ -311,6 +343,7 @@ class Scanline:
                     last_stixel_dist = np.sqrt(
                         last_cluster_stixel_x.top_point['x'] ** 2 + last_cluster_stixel_x.top_point['y'] ** 2)
 
+                # minimum distance in x direction to count as a new stixel
                 if (last_cluster_stixel_x is None or
                         (last_stixel_dist is not None and (last_stixel_dist - point_dist) >
                          config['scanline_determine_stixel']['x_threshold'])):
@@ -349,21 +382,32 @@ class StixelGenerator:
     Methods:
         generate_stixel: Generates stixels from laser points.
     """
-    def __init__(self, camera_info, img_size, plane_model, stixel_width):
+    def __init__(self,
+                 camera_info: CameraInfo,
+                 img_size: Dict[str, int],
+                 plane_model: np.array,
+                 stixel_width: int,
+                 stixel_param: Dict[str, int],
+                 angle_param: Dict[str, int]
+                 ):
         self.camera_info = camera_info
         self.plane_model = plane_model
         self.img_size = img_size
         self.laser_scanlines = []
         self.stixel_width = stixel_width
+        self.stixel_param = stixel_param
+        self.angle_param = angle_param
 
     def generate_stixel(self, laser_points: np.array) -> List[Stixel]:
-        laser_points_by_angle = group_points_by_angle(laser_points)
+        laser_points_by_angle = group_points_by_angle(laser_points, self.angle_param, self.camera_info)
         stixels = []
         for angle_laser_points in laser_points_by_angle:
-            column = Scanline(angle_laser_points,
-                              camera_info=self.camera_info,
-                              plane_model=self.plane_model,
-                              image_size=self.img_size,
-                              stixel_width = self.stixel_width)
-            stixels.append(column.get_stixels())
+            if len(angle_laser_points) != 0:
+                column = Scanline(angle_laser_points,
+                                  camera_info=self.camera_info,
+                                  plane_model=self.plane_model,
+                                  image_size=self.img_size,
+                                  stixel_width=self.stixel_width,
+                                  param=self.stixel_param)
+                stixels.append(column.get_stixels())
         return [stixel for sublist in stixels for stixel in sublist]

@@ -1,9 +1,11 @@
 import numpy as np
 import pykitti
 import os
-from typing import List, Tuple
+import yaml
+from typing import List, Tuple, TypedDict, Optional
 from libraries.Stixel import point_dtype
 from dataloader import BaseData, CameraInfo, Pose
+from PIL.Image import Image
 
 
 class KittiData(BaseData):
@@ -24,11 +26,16 @@ class KittiData(BaseData):
         point_slices() -> numpy.array: Processes the point cloud and returns the filtered points with their respective
         pixel coordinates.
     """
-    def __init__(self, name, rgb_stereo_pair, velo_scan, calib_data):
+    def __init__(self,
+                 name: str,
+                 image: Image,
+                 velo_scan: np.array,
+                 calib_data,
+                 image_right: Optional[Image] = None):
         super().__init__()
         self.name: str = name
-        self.image = rgb_stereo_pair[0]     # cam2, rectified
-        self.image_right = rgb_stereo_pair[1]       # cam3, rectified
+        self.image = image     # cam2, rectified
+        self.image_right = image_right       # cam3, rectified
         self.points: np.array = velo_scan
         self.c = calib_data
         self.camera_info: CameraInfo = CameraInfo(camera_mtx=calib_data.K_cam2,
@@ -53,7 +60,8 @@ class KittiData(BaseData):
         projection_list = np.array(points_in_camera[:, 0:2].astype(int))
         pts_coordinates = np.array(velo[:, 0:3])
         combined_data = np.hstack((pts_coordinates, projection_list))
-        return np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+        pts = np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+        return pts
 
     def projection_test(self):
         # cam to velo: cam -> imu/ imu -> velo
@@ -70,7 +78,8 @@ class KittiData(BaseData):
         projection_list = np.array(img_pts[:, 0:2].astype(int))
         pts_coordinates = np.array(lidar_pts[:, 0:3])
         combined_data = np.hstack((pts_coordinates, projection_list))
-        return np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+        pts = np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+        return pts
 
 
 class KittiDataLoader:
@@ -92,12 +101,16 @@ class KittiDataLoader:
     """
     def __init__(self, data_dir, phase, first_only=False):
         super().__init__()
-        self.name: str = "KITTI-dataset"
+        self.name: str = "kitti"
+        self.phase: str = phase
         self.data_dir = os.path.join(data_dir, "kitti", phase)
         self.record_map: np.array = self._read_kitty_data_structure()
+        with open(f'dataloader/configs/{self.name}-pcl-config.yaml') as yaml_file:
+            self.config = yaml.load(yaml_file, Loader=yaml.FullLoader)
         self.first_only: bool = first_only
-        self.img_size = {'width': 1242, 'height': 376}      # 1224 x 370 original
-        self.stereo_available: bool = True
+        # 1224+- x 370+- original kitti, 1242 x 375 kitti odb, 1404 x 376 kitti 360
+        self.img_size = {'width': 1248, 'height': 376}
+        self.stereo_available: bool = False
         print(f"Found {len(self.record_map)} Kitti record files.")
 
     def __getitem__(self, idx: int) -> List[KittiData]:
@@ -108,10 +121,14 @@ class KittiDataLoader:
         frame_num: int = 0
         for frame_idx in range(len(scene)):
             name = f"set_{str(idx)}_{self.record_map[idx]['date']}_{self.record_map[idx]['drive']}_{frame_num}"
+            image_pair = scene.get_rgb(frame_idx)
             kitti_data_chunk.append(KittiData(name=name,
-                                              rgb_stereo_pair=scene.get_rgb(frame_idx),
+                                              image=image_pair[0].resize((self.img_size['width'],
+                                                                          self.img_size['height'])),
                                               velo_scan=scene.get_velo(frame_idx),
-                                              calib_data=scene.calib))
+                                              calib_data=scene.calib,
+                                              image_right=image_pair[1].resize((self.img_size['width'],
+                                                                                self.img_size['height']))))
             if self.first_only:
                 break
             frame_num += 1

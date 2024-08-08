@@ -22,7 +22,7 @@ After that you can test the functionalities with `utility/explore.py` or run `/g
 
 #### Output
 The output is simply the image and a `.csv` with the following header:
-> 'img_path', 'x', 'yT', 'yB', 'class', 'depth'
+> 'img', 'u', 'vT', 'vB', 'd'
 
 what can be easily read by Pandas with `pd.read_csv("target.csv")`.
 

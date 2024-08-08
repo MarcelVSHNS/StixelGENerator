@@ -1,24 +1,8 @@
-rm_gnd:
-  z_max: 0.96          # kitti: -1.0
-  distance_threshold: 0.24    # ameise: 0.14
-  ransac_n: 3
-  num_iterations: 10000
-rm_los:
-  radius: 30000000    #ameise: 270000
-  x: 0.0
-  y: 0.0
-  z: 0.0
-rm_far_pts:
-  range_threshold: 50.0
-group_angle:
-  eps: 0.0003        # ameise: 0.00092
-  min_samples: 1
 cluster:
   to_ground_detection_threshold: 1.0
 scanline_cluster_obj:
-  min_samples: 2
   clustering_factor: 0.08
   clustering_offset: 0.0
 scanline_determine_stixel:
-  x_threshold: 0.2
+  x_threshold: 0.4
 

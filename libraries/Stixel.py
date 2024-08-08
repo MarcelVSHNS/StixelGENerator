@@ -3,6 +3,15 @@ from enum import Enum
 from typing import Dict
 
 
+point_dtype_sph = np.dtype([
+    ('r', np.float64),
+    ('az', np.float64),
+    ('el', np.float64),
+    ('proj_x', np.int32),
+    ('proj_y', np.int32)
+])
+
+
 point_dtype = np.dtype([
     ('x', np.float64),
     ('y', np.float64),
@@ -48,7 +57,12 @@ class Stixel:
         Raises:
             AssertionError: If the stixel is not within the image bounds or does not align with the grid.
     """
-    def __init__(self, top_point: np.array, bottom_point: np.array, position_class: StixelClass, image_size: Dict[str, int], grid_step: int = 8):
+    def __init__(self,
+                 top_point: np.array,
+                 bottom_point: np.array,
+                 position_class: StixelClass,
+                 image_size: Dict[str, int],
+                 grid_step: int = 8):
         self.column = top_point['proj_x']
         self.top_row = top_point['proj_y']
         self.bottom_row = bottom_point['proj_y']
@@ -82,7 +96,7 @@ class Stixel:
             else:
                 self.bottom_row += self.grid_step
         self.column = self._normalize_into_grid(self.column, step=self.grid_step)
-        if self.column == self.image_size['width']:
+        if self.column >= self.image_size['width']:
             self.column = self.image_size['width'] - self.grid_step
 
     def check_integrity(self):
@@ -106,7 +120,16 @@ class Stixel:
         Returns:
             int: The normalized value of pos, rounded down to the nearest multiple of step.
         """
-        val_norm = pos - (pos % step)
+        # Calculate the remainders from rounding down and up
+        remainder_down = pos % step
+        remainder_up = step - remainder_down
+
+        # Check if the remainder from rounding up is smaller (closer)
+        if remainder_up < remainder_down:
+            val_norm = pos + remainder_up  # Round up
+        else:
+            val_norm = pos - remainder_down  # Round down
+
         return val_norm
 
     @staticmethod

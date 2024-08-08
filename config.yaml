@@ -9,10 +9,11 @@ phases:
 data_path: /home/marcel/workspace/datasets/waymo-od
 raw_data_path: /media/marcel/Data1/Raw
 exploring:
-  idx: 111
-  frame_num: 12
-  col: 180
+  idx: null
+  frame_num: -1
+  col: 21
 explore_data_deep: False
 grid_step: 8
 SemSeg:
   for_dataset: kitti
+dataset: waymo    # waymo, kitti

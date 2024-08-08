@@ -4,12 +4,17 @@ from PIL import Image
 import pandas as pd
 from typing import List
 from datetime import datetime
-from dataloader import WaymoDataLoader as Dataset, KittiData as Data
 from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model
 
 # open Config
 with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
+if config['dataset'] == "waymo":
+    from dataloader import WaymoDataLoader as Dataset, WaymoData as Data
+elif config['dataset'] == "kitti":
+    from dataloader import KittiDataLoader as Dataset, KittiData as Data
+else:
+    raise ValueError("Dataset not supported")
 overall_start_time = datetime.now()
 
 
@@ -69,13 +74,21 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
             break
         for frame in data_chunk:
             try:
-                lp_without_ground, plane_model = remove_ground(frame.points)
-                lidar_pts = remove_far_points(lp_without_ground)
-                lidar_pts = remove_pts_below_plane_model(lidar_pts, plane_model)
-                # lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz)
+                lp_without_ground, plane_model = remove_ground(frame.points,
+                                                               dataloader.config['rm_gnd'])
+                lidar_pts = remove_far_points(lp_without_ground,
+                                              dataloader.config['rm_far_pts'])
+                lidar_pts = remove_pts_below_plane_model(lidar_pts,
+                                                         plane_model)
+                lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz,
+                                                 dataloader.config['rm_los'])
                 # camera is direct under lidar, no los
-                stixel_gen = StixelGenerator(camera_info=frame.camera_info, img_size=dataloader.img_size,
-                                             plane_model=plane_model, stixel_width=config['grid_step'])
+                stixel_gen = StixelGenerator(camera_info=frame.camera_info,
+                                             img_size=dataloader.img_size,
+                                             plane_model=plane_model,
+                                             stixel_width=config['grid_step'],
+                                             stixel_param=dataloader.config['stixel_cluster'],
+                                             angle_param=dataloader.config['group_angle'])
                 stixel_list = stixel_gen.generate_stixel(lidar_pts)
                 # Export a single Stixel Wold representation and the relative images
                 _export_single_dataset(image_left=frame.image,

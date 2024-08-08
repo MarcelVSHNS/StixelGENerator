@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import glob
+import yaml
 from typing import List, Tuple
 from waymo_open_dataset import dataset_pb2 as open_dataset
 from waymo_open_dataset.utils import frame_utils, transform_utils
@@ -9,7 +10,6 @@ from waymo_open_dataset.v2 import convert_range_image_to_point_cloud
 from PIL import Image
 from libraries.Stixel import point_dtype
 from dataloader import BaseData, CameraInfo
-from libraries import Transformation
 
 
 class WaymoData(BaseData):
@@ -116,6 +116,8 @@ class WaymoDataLoader:
         self.camera_segmentation_only: bool = camera_segmentation_only
         self.first_only: bool = first_only
         self.img_size = {'width': 1920, 'height': 1280}
+        with open(f'dataloader/configs/{self.name}-pcl-config.yaml') as yaml_file:
+            self.config = yaml.load(yaml_file, Loader=yaml.FullLoader)
         self.stereo_available: bool = False
         # find files in folder (data_dir) which fit to pattern endswith-'.tfrecord'
         self.record_map = sorted(glob.glob(os.path.join(self.data_dir, '*.tfrecord')))

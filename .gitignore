@@ -150,3 +150,6 @@ cython_debug/
 raw
 data
 
+failures_testing.txt
+failures_training.txt
+failures_validation.txt

@@ -193,8 +193,10 @@ class BottomPointCalculator:
     def project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:
         """Retrieve the projection matrix based on provided parameters."""
         pt = np.stack([point['x'], point['y'], point['z']], axis=-1)
-        # t_cam2_lid = Transformation('velo', 'cam', self.camera_info.extrinsic.xyz, self.camera_info.extrinsic.rpy)
-        point_in_camera = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(np.append(pt[:3], 1))))
+        # P = K * Rect * R|t with R|t = T
+        # https://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/CameraInfo.html
+        # TODO: check if K is correctly loaded (before used: P)
+        point_in_camera = self.camera_info.K.dot(self.camera_info.R.dot(self.camera_info.T.dot(np.append(pt[:3], 1))))
         # pixel = np.dot(self.camera_mtx, point_in_camera[:3])
         u = int(point_in_camera[0] / point_in_camera[2])
         v = int(point_in_camera[1] / point_in_camera[2])

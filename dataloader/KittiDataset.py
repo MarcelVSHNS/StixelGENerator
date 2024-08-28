@@ -40,7 +40,7 @@ class KittiData(BaseData):
         self.c = calib_data
         self.camera_info: CameraInfo = CameraInfo(camera_mtx=calib_data.K_cam2,
                                                   proj_mtx=np.array(calib_data.P_rect_20),
-                                                  rect_mtx=calib_data.R_rect_20,
+                                                  rect_mtx=np.eye(4),
                                                   trans_mtx=calib_data.T_cam2_velo)
         self.points: np.array = self.point_slices()
 
@@ -66,7 +66,7 @@ class KittiData(BaseData):
     def projection_test(self):
         # cam to velo: cam -> imu/ imu -> velo
         t_imu_velo = np.linalg.inv(self.c.T_velo_imu)
-        t_cam_to_velo = np.dot(self.c.T_cam2_imu, t_imu_velo,)
+        t_cam_to_velo = np.dot(self.c.T_cam2_imu, t_imu_velo)
         T = t_cam_to_velo
         lidar_pts = np.vstack((self.points['x'], self.points['y'], self.points['z'])).T
         lidar_pts = np.insert(lidar_pts[:, 0:3], 3, 1, axis=1).T

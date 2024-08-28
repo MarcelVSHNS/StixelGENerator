@@ -12,6 +12,32 @@ stixel_colors = {
     StixelClass.OBJECT: (96, 96, 96),  # dark grey
     StixelClass.TOP: (150, 150, 150)  # grey
 }
+alpha = 180
+laser_label_color = {
+    0: (0, 0, 0, 0),  # undefined
+    1: (0, 0, 142, alpha),  # car
+    2: (0, 0, 70, alpha),  # truck
+    3: (0, 60, 100, alpha),  # bus
+    4: (0, 80, 100, alpha),  # other vehicle
+    5: (255, 0, 0, alpha),  # motorcyclist
+    6: (255, 0, 0, alpha),  # bicyclist
+    7: (220, 20, 60, alpha),  # pedestrian
+    8: (220, 220, 0, alpha),  # sign
+    9: (250, 170, 30, alpha),  # traffic light
+    10: [153, 153, 153, alpha],  # pole
+    11: (180, 165, 180, alpha),  # construction cone
+    12: (119, 11, 32, alpha),  # bicycle
+    13: (0, 0, 230, alpha),  # motorcycle
+    14: (70, 70, 70, alpha),  # building
+    15: (107, 142, 35, alpha),  # vegetation
+    16: (152, 251, 152, alpha),  # tree trunk
+    17: (0, 0, 110, alpha),  # crub
+    18: (128, 64, 128, alpha),  # road
+    19: (230, 150, 140, alpha),  # lane marker
+    20: (81, 0, 81, alpha),  # other ground
+    21: (250, 170, 160, alpha),  # walkable
+    22: (244, 35, 232, alpha)  # sidewalk
+}
 
 
 def plot_z_over_range(point_lists: List[np.array], colors: List[str], labels: List[str] = None):
@@ -91,14 +117,17 @@ def calculate_distance(point):
     return np.sqrt(point['x']**2 + point['y']**2 + point['z']**2)
 
 
-def draw_points_on_image(image, points, y_offset=0):
+def draw_points_on_image(image, points, y_offset=0, coloring_sem = False):
     distances = [calculate_distance(point) for point in points]
     max_distance = max(distances)
     cmap = plt.get_cmap('viridis')
     for point, distance in zip(points, distances):
-        normalized_distance = distance / max_distance
-        color = cmap(normalized_distance)[:3]
-        color = [int(c * 255) for c in color]
+        if coloring_sem:
+            color = laser_label_color[point['sem']]
+        else:
+            normalized_distance = distance / max_distance
+            color = cmap(normalized_distance)[:3]
+            color = [int(c * 255) for c in color]
         proj_x, proj_y = point['proj_x'], point['proj_y'] + y_offset
         cv2.circle(image, (proj_x, proj_y), 2, color, -1)
     return Image.fromarray(image)

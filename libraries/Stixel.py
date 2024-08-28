@@ -8,7 +8,8 @@ point_dtype_sph = np.dtype([
     ('az', np.float64),
     ('el', np.float64),
     ('proj_x', np.int32),
-    ('proj_y', np.int32)
+    ('proj_y', np.int32),
+    ('sem', np.int32)
 ])
 
 
@@ -17,7 +18,8 @@ point_dtype = np.dtype([
     ('y', np.float64),
     ('z', np.float64),
     ('proj_x', np.int32),
-    ('proj_y', np.int32)
+    ('proj_y', np.int32),
+    ('sem', np.int32)
 ])
 
 point_dtype_ext = np.dtype([
@@ -26,6 +28,7 @@ point_dtype_ext = np.dtype([
     ('z', np.float64),
     ('proj_x', np.int32),
     ('proj_y', np.int32),
+    ('sem', np.int32),
     ('z_ref', np.float64)
 ])
 

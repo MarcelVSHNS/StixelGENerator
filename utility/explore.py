@@ -10,6 +10,8 @@ if config['dataset'] == "waymo":
     from dataloader import WaymoDataLoader as Dataset, WaymoData as Data
 elif config['dataset'] == "kitti":
     from dataloader import KittiDataLoader as Dataset, KittiData as Data
+elif config['dataset'] == "kitti-360":
+    from dataloader import Kitti360DataLoader as Dataset, Kitti360Data as Data
 else:
     raise ValueError("Dataset not supported")
 
@@ -31,9 +33,9 @@ def main():
 
     """ 0.2 Check out if your own camera-lidar projection works (camera calib data are not always and for everyone
      unique explained). It is necessary to calculate the correct bottom point of a finished Stixel."""
-    # new_pts = sample.projection_test()
-    # points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
-    # points_on_img.show()
+    #new_pts = sample.projection_test()
+    points_on_img = draw_points_on_image(np.array(sample.image), sample.points, coloring_sem=True)
+    points_on_img.show()
 
     """ 1. Adjust the ground detection. Try to make it rough! the street should disappear every time! Repeat the same
      configuration (libraries/pcl-config.yaml) multiple times to proof your values. Try not to make it precise, the

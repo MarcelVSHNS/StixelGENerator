@@ -12,21 +12,62 @@ from libraries.Stixel import point_dtype
 from dataloader import BaseData, CameraInfo
 
 
+def convert_range_image_to_point_cloud_labels(frame,
+                                              range_images,
+                                              segmentation_labels,
+                                              ri_index=0):
+    """Convert segmentation labels from range images to point clouds.
+    FROM: https://github.com/waymo-research/waymo-open-dataset/blob/master/tutorial/tutorial_3d_semseg.ipynb
+    Args:
+      frame: open dataset frame
+      range_images: A dict of {laser_name, [range_image_first_return,
+         range_image_second_return]}.
+      segmentation_labels: A dict of {laser_name, [range_image_first_return,
+         range_image_second_return]}.
+      ri_index: 0 for the first return, 1 for the second return.
+
+    Returns:
+      point_labels: {[N, 2]} list of 3d lidar points's segmentation labels. 0 for
+        points that are not labeled.
+    """
+    calibrations = sorted(frame.context.laser_calibrations, key=lambda c: c.name)
+    point_labels = []
+    for c in calibrations:
+        range_image = range_images[c.name][ri_index]
+        range_image_tensor = tf.reshape(
+            tf.convert_to_tensor(range_image.data), range_image.shape.dims)
+        range_image_mask = range_image_tensor[..., 0] > 0
+
+        if c.name in segmentation_labels:
+            sl = segmentation_labels[c.name][ri_index]
+            sl_tensor = tf.reshape(tf.convert_to_tensor(sl.data), sl.shape.dims)
+            sl_points_tensor = tf.gather_nd(sl_tensor, tf.where(range_image_mask))
+        else:
+            num_valid_point = tf.math.reduce_sum(tf.cast(range_image_mask, tf.int32))
+            sl_points_tensor = tf.zeros([num_valid_point, 2], dtype=tf.int32)
+
+        point_labels.append(sl_points_tensor.numpy())
+    return point_labels
+
+
 class WaymoData(BaseData):
-    def __init__(self, tf_frame, camera_segmentation_only=False):
+    def __init__(self, tf_frame, cam_idx):
         """
         Base class for raw from waymo open dataset
         Args:
             tf_frame:
-            camera_segmentation_only:
+            label_only:
         """
         super().__init__()
-        self.name: str = tf_frame.context.name
-
-        front_img = sorted(tf_frame.images, key=lambda i: i.name)[0]
-        self.image = Image.fromarray(tf.image.decode_jpeg(front_img.image).numpy())     # Front image
+        # front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4
+        self.cam_idx: int = cam_idx
+        img = sorted(tf_frame.images, key=lambda i: i.name)[cam_idx]
+        self.camera_labels = sorted(tf_frame.projected_lidar_labels, key=lambda i: i.name)[self.cam_idx]
+        self.name: str = f"{tf_frame.context.name}_{img.name}"
+        self.laser_labels = tf_frame.laser_labels
+        self.image: np.array = Image.fromarray(tf.image.decode_jpeg(img.image).numpy())
+        assert self.image.size == (1920, 1280), F"Check image Size of Camera idx:{self.cam_idx}"
         self.image_right = None     # Safety dummy, deprecated
-        self.camera_segmentation_only: bool = camera_segmentation_only
         self.frame: open_dataset.Frame = tf_frame
         front_cam_calib = sorted(self.frame.context.camera_calibrations, key=lambda i: i.name)[0]
         P = self._get_projection_matrix(front_cam_calib.intrinsic)
@@ -36,7 +77,7 @@ class WaymoData(BaseData):
                                       proj_mtx=P,
                                       rect_mtx=np.eye(4))
         # Transformations
-        self.point_slices(tf_frame)  # Apply laser transformation
+        self.point_slices(frame=tf_frame, cam_idx=self.cam_idx)  # Apply laser transformation
 
     @staticmethod
     def _get_projection_matrix(intrinsics):
@@ -52,7 +93,7 @@ class WaymoData(BaseData):
         ])
         return K_tmp @ waymo_cam_RT
 
-    def point_slices(self, frame):
+    def point_slices(self, frame, cam_idx):
         """
         Slices the top lidar point cloud into pieces, fitting for every camera incl. projections
         Args:
@@ -68,17 +109,21 @@ class WaymoData(BaseData):
             range_images,
             camera_projections,
             range_image_top_pose)
+        point_labels = convert_range_image_to_point_cloud_labels(
+            frame, range_images, segmentation_labels)
         # 3d points in vehicle frame, just pick Top LiDAR
         laser_points = points[0]
+        laser_labels = point_labels[0]
         laser_projection_points = tf.constant(cp_points[0], dtype=tf.int32)
         images = sorted(frame.images, key=lambda i: i.name)
         # define mask where the projections equal the picture view
         # (0 = Front, 1 = Side_left, 2 = Side_right, 3 = Left, 4 = Right)
-        mask = tf.equal(laser_projection_points[..., 0], images[0].name)
+        mask = tf.equal(laser_projection_points[..., 0], images[cam_idx].name)
         # transform points after slicing it from the mask into float values
         laser_points_view = tf.gather_nd(laser_points, tf.where(mask)).numpy()
+        laser_labels_view = tf.gather_nd(laser_labels, tf.where(mask)).numpy()
         laser_camera_projections_view = tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy()
-        concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3]))
+        concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3], laser_labels_view[..., 1:]))
         self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)
 
     def projection_test(self):
@@ -95,7 +140,7 @@ class WaymoData(BaseData):
 
 
 class WaymoDataLoader:
-    def __init__(self, data_dir: str, phase: str, camera_segmentation_only=False, first_only=True):
+    def __init__(self, data_dir: str, phase: str, additional_views=False, first_only=True):
         """
         Loads a full set of waymo raw in single frames, can be one tf_record file or a folder of  tf_record files.
         provides a list by index for a tfrecord-file which has ~20 frame objects. Every object has lists of
@@ -106,14 +151,14 @@ class WaymoDataLoader:
                 5 .laser_points (shape of [..., [x, y, z, img_x, img_y]])
         Args:
             data_dir: specify the location of the tf_records
-            camera_segmentation_only: if True, loads only frames with available camera segmentation
+            additional_views: if True, loads only frames with available camera segmentation
             first_only: doesn't load the full ~20 frames to return a raw sample if True
         """
         super().__init__()
         self.name: str = "waymo-od"
         self.phase: str = phase
         self.data_dir = os.path.join(data_dir, "waymo", phase)
-        self.camera_segmentation_only: bool = camera_segmentation_only
+        self.additional_views: bool = additional_views
         self.first_only: bool = first_only
         self.img_size = {'width': 1920, 'height': 1280}
         with open(f'dataloader/configs/{self.name}-pcl-config.yaml') as yaml_file:
@@ -135,9 +180,14 @@ class WaymoDataLoader:
         waymo_data_chunk = []
         for tf_frame in frames:
             # start_time = datetime.now()
-            waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
-                                              camera_segmentation_only=self.camera_segmentation_only))
-            # self.object_creation_time = datetime.now() - start_time
+            if self.additional_views:
+                for i in range(3):
+                    waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
+                                                      cam_idx=i))
+            else:
+                waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
+                                                  cam_idx=0))
+                # self.object_creation_time = datetime.now() - start_time
             if self.first_only:
                 break
         return waymo_data_chunk
@@ -156,15 +206,11 @@ class WaymoDataLoader:
         frame_list = []
         frame_num = 0
         for data in dataset:
-            if self.camera_segmentation_only:
-                frame = open_dataset.Frame()
-                frame.ParseFromString(bytearray(data.numpy()))
-                if frame.images[0].camera_segmentation_label.panoptic_label:
-                    frame_list.append(frame)
-            else:
-                if frame_num % 10 == 0:
-                    frame = open_dataset.Frame()
-                    frame.ParseFromString(bytearray(data.numpy()))
-                    frame_list.append(frame)
-                frame_num += 1
+            frame = open_dataset.Frame()
+            frame.ParseFromString(bytearray(data.numpy()))
+            # if frame.images[0].camera_segmentation_label.panoptic_label:
+            # if len(frame.camera_labels) != 0 and len(frame.laser_labels) != 0:
+            if frame.lasers[0].ri_return1.segmentation_label_compressed:
+                frame_list.append(frame)
+            frame_num += 1
         return frame_list

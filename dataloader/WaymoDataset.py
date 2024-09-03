@@ -4,12 +4,48 @@ import os
 import glob
 import yaml
 from typing import List, Tuple
+import matplotlib.pyplot as plt
+from matplotlib import patches
 from waymo_open_dataset import dataset_pb2 as open_dataset
-from waymo_open_dataset.utils import frame_utils, transform_utils
+from waymo_open_dataset.utils import frame_utils, transform_utils, box_utils
 from waymo_open_dataset.v2 import convert_range_image_to_point_cloud
+from waymo_open_dataset.wdl_limited.camera.ops import py_camera_model_ops
 from PIL import Image
 from libraries.Stixel import point_dtype
+from libraries import draw_3d_wireframe_box, draw_2d_box
 from dataloader import BaseData, CameraInfo
+
+
+def show_camera_image(camera_image, layout):
+  """Display the given camera image."""
+  ax = plt.subplot(*layout)
+  plt.imshow(tf.image.decode_jpeg(camera_image.image))
+  plt.title(open_dataset.CameraName.Name.Name(camera_image.name))
+  plt.grid(False)
+  plt.axis('off')
+  return ax
+
+
+def show_projected_lidar_labels(frame, camera_image, ax):
+  """Displays pre-projected 3D laser labels."""
+
+  for projected_labels in frame.projected_lidar_labels:
+    # Ignore camera labels that do not correspond to this camera.
+    if projected_labels.name != camera_image.name:
+      continue
+
+    # Iterate over the individual labels.
+    for label in projected_labels.labels:
+      # Draw the bounding box.
+      rect = patches.Rectangle(
+          xy=(label.box.center_x - 0.5 * label.box.length,
+              label.box.center_y - 0.5 * label.box.width),
+          width=label.box.length,
+          height=label.box.width,
+          linewidth=1,
+          edgecolor=(0.0, 1.0, 0.0, 1.0),  # green
+          facecolor=(0.0, 1.0, 0.0, 0.1))  # opaque green
+      ax.add_patch(rect)
 
 
 def convert_range_image_to_point_cloud_labels(frame,
@@ -50,6 +86,106 @@ def convert_range_image_to_point_cloud_labels(frame,
     return point_labels
 
 
+def project_vehicle_to_image(vehicle_pose, calibration, points):
+  """Projects from vehicle coordinate system to image with global shutter.
+
+  Arguments:
+    vehicle_pose: Vehicle pose transform from vehicle into world coordinate
+      system.
+    calibration: Camera calibration details (including intrinsics/extrinsics).
+    points: Points to project of shape [N, 3] in vehicle coordinate system.
+
+  Returns:
+    Array of shape [N, 3], with the latter dimension composed of (u, v, ok).
+  """
+  # Transform points from vehicle to world coordinate system (can be
+  # vectorized).
+  pose_matrix = np.array(vehicle_pose.transform).reshape(4, 4)
+  world_points = np.zeros_like(points)
+  for i, point in enumerate(points):
+    cx, cy, cz, _ = np.matmul(pose_matrix, [*point, 1])
+    world_points[i] = (cx, cy, cz)
+
+  # Populate camera image metadata. Velocity and latency stats are filled with
+  # zeroes.
+  extrinsic = tf.reshape(
+      tf.constant(list(calibration.extrinsic.transform), dtype=tf.float32),
+      [4, 4])
+  intrinsic = tf.constant(list(calibration.intrinsic), dtype=tf.float32)
+  metadata = tf.constant([
+      calibration.width,
+      calibration.height,
+      open_dataset.CameraCalibration.GLOBAL_SHUTTER,
+  ],
+                         dtype=tf.int32)
+  camera_image_metadata = list(vehicle_pose.transform) + [0.0] * 10
+
+  # Perform projection and return projected image coordinates (u, v, ok).
+  return py_camera_model_ops.world_to_image(extrinsic, intrinsic, metadata,
+                                            camera_image_metadata,
+                                            world_points).numpy()
+
+
+def show_projected_camera_synced_boxes(frame, camera_image, ax, draw_3d_box=False):
+  """Displays camera_synced_box 3D labels projected onto camera."""
+  FILTER_AVAILABLE = any(
+      [label.num_top_lidar_points_in_box > 0 for label in frame.laser_labels])
+
+  if not FILTER_AVAILABLE:
+      print('WARNING: num_top_lidar_points_in_box does not seem to be populated. '
+            'Make sure that you are using an up-to-date release (V1.3.2 or later) '
+            'to enable improved filtering of occluded objects.')
+
+  # Fetch matching camera calibration.
+  calibration = next(cc for cc in frame.context.camera_calibrations
+                     if cc.name == camera_image.name)
+
+  for label in frame.laser_labels:
+    box = label.camera_synced_box
+
+    if not box.ByteSize():
+      continue  # Filter out labels that do not have a camera_synced_box.
+    if (FILTER_AVAILABLE and not label.num_top_lidar_points_in_box) or (
+        not FILTER_AVAILABLE and not label.num_lidar_points_in_box):
+      continue  # Filter out likely occluded objects.
+
+    # Retrieve upright 3D box corners.
+    box_coords = np.array([[
+        box.center_x, box.center_y, box.center_z, box.length, box.width,
+        box.height, box.heading
+    ]])
+    corners = box_utils.get_upright_3d_box_corners(
+        box_coords)[0].numpy()  # [8, 3]
+
+    # Project box corners from vehicle coordinates onto the image.
+    projected_corners = project_vehicle_to_image(frame.pose, calibration,
+                                                 corners)
+    u, v, ok = projected_corners.transpose()
+    ok = ok.astype(bool)
+
+    # Skip object if any corner projection failed. Note that this is very
+    # strict and can lead to exclusion of some partially visible objects.
+    if not all(ok):
+      continue
+    u = u[ok]
+    v = v[ok]
+
+    # Clip box to image bounds.
+    u = np.clip(u, 0, calibration.width)
+    v = np.clip(v, 0, calibration.height)
+
+    if u.max() - u.min() == 0 or v.max() - v.min() == 0:
+      continue
+
+    if draw_3d_box:
+      # Draw approximate 3D wireframe box onto the image. Occlusions are not
+      # handled properly.
+      draw_3d_wireframe_box(ax, u, v, (1.0, 1.0, 0.0))
+    else:
+      # Draw projected 2D box onto the image.
+      draw_2d_box(ax, u, v, (1.0, 1.0, 0.0))
+
+
 class WaymoData(BaseData):
     def __init__(self, tf_frame, cam_idx):
         """
@@ -62,9 +198,11 @@ class WaymoData(BaseData):
         # front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4
         self.cam_idx: int = cam_idx
         img = sorted(tf_frame.images, key=lambda i: i.name)[cam_idx]
-        self.camera_labels = sorted(tf_frame.projected_lidar_labels, key=lambda i: i.name)[self.cam_idx]
+        self.camera_labels: open_dataset.CameraLabels = sorted(tf_frame.projected_lidar_labels, key=lambda i: i.name)[self.cam_idx]
+        test_proj = self.camera_labels.labels[0]
         self.name: str = f"{tf_frame.context.name}_{img.name}"
         self.laser_labels = tf_frame.laser_labels
+        test_laser = self.laser_labels[0]
         self.image: np.array = Image.fromarray(tf.image.decode_jpeg(img.image).numpy())
         assert self.image.size == (1920, 1280), F"Check image Size of Camera idx:{self.cam_idx}"
         self.image_right = None     # Safety dummy, deprecated
@@ -77,7 +215,7 @@ class WaymoData(BaseData):
                                       proj_mtx=P,
                                       rect_mtx=np.eye(4))
         # Transformations
-        self.point_slices(frame=tf_frame, cam_idx=self.cam_idx)  # Apply laser transformation
+        self._point_slices(frame=tf_frame, cam_idx=self.cam_idx)  # Apply laser transformation
 
     @staticmethod
     def _get_projection_matrix(intrinsics):
@@ -93,7 +231,7 @@ class WaymoData(BaseData):
         ])
         return K_tmp @ waymo_cam_RT
 
-    def point_slices(self, frame, cam_idx):
+    def _point_slices(self, frame, cam_idx):
         """
         Slices the top lidar point cloud into pieces, fitting for every camera incl. projections
         Args:
@@ -137,6 +275,13 @@ class WaymoData(BaseData):
         pts_coordinates = np.array(lidar_pts[:, 0:3])
         combined_data = np.hstack((pts_coordinates, projection_list))
         return np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+
+    def show_3d_bboxes(self):
+        for index, image in enumerate(self.frame.images):
+            ax = show_camera_image(image, [3, 3, index + 1])
+            show_projected_lidar_labels(self.frame, image, ax)
+            show_projected_camera_synced_boxes(self.frame, image, ax, draw_3d_box=False)
+        plt.show()
 
 
 class WaymoDataLoader:

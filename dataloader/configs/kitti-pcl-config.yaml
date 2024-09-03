@@ -18,4 +18,5 @@ group_angle:
 stixel_cluster:
   min_samples: 2
   cluster_eps: 100
-
+semantic_filtering:
+  classes: [0]  # not labeled

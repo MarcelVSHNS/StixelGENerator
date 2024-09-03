@@ -1,42 +1,17 @@
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import List, Tuple
+from matplotlib import patches
+from typing import List, Tuple, Dict, Optional
 from libraries import StixelClass
 import cv2
-from libraries import Stixel
+from libraries.Stixel import Stixel
 
 colors = [(255, 0, 0), (255, 128, 0), (255, 255, 0), (0, 255, 0), (0, 255, 255),
           (0, 0, 255), (255, 0, 255)]
 stixel_colors = {
     StixelClass.OBJECT: (96, 96, 96),  # dark grey
     StixelClass.TOP: (150, 150, 150)  # grey
-}
-alpha = 180
-laser_label_color = {
-    0: (0, 0, 0, 0),  # undefined
-    1: (0, 0, 142, alpha),  # car
-    2: (0, 0, 70, alpha),  # truck
-    3: (0, 60, 100, alpha),  # bus
-    4: (0, 80, 100, alpha),  # other vehicle
-    5: (255, 0, 0, alpha),  # motorcyclist
-    6: (255, 0, 0, alpha),  # bicyclist
-    7: (220, 20, 60, alpha),  # pedestrian
-    8: (220, 220, 0, alpha),  # sign
-    9: (250, 170, 30, alpha),  # traffic light
-    10: [153, 153, 153, alpha],  # pole
-    11: (180, 165, 180, alpha),  # construction cone
-    12: (119, 11, 32, alpha),  # bicycle
-    13: (0, 0, 230, alpha),  # motorcycle
-    14: (70, 70, 70, alpha),  # building
-    15: (107, 142, 35, alpha),  # vegetation
-    16: (152, 251, 152, alpha),  # tree trunk
-    17: (0, 0, 110, alpha),  # crub
-    18: (128, 64, 128, alpha),  # road
-    19: (230, 150, 140, alpha),  # lane marker
-    20: (81, 0, 81, alpha),  # other ground
-    21: (250, 170, 160, alpha),  # walkable
-    22: (244, 35, 232, alpha)  # sidewalk
 }
 
 
@@ -117,13 +92,13 @@ def calculate_distance(point):
     return np.sqrt(point['x']**2 + point['y']**2 + point['z']**2)
 
 
-def draw_points_on_image(image, points, y_offset=0, coloring_sem = False):
+def draw_points_on_image(image, points, y_offset=0, coloring_sem: Optional[Dict[str, Tuple]] = None):
     distances = [calculate_distance(point) for point in points]
     max_distance = max(distances)
     cmap = plt.get_cmap('viridis')
     for point, distance in zip(points, distances):
-        if coloring_sem:
-            color = laser_label_color[point['sem']]
+        if coloring_sem is not None:
+            color = coloring_sem[point['sem_seg']]
         else:
             normalized_distance = distance / max_distance
             color = cmap(normalized_distance)[:3]
@@ -180,3 +155,41 @@ def draw_obj_points_2d(objects, stixels: List[Stixel] = None):
     plt.grid(True)
     plt.xlim([0, max(xs)+0.5])
     plt.show()
+
+""" Bounding Box Visualization from https://github.com/waymo-research/waymo-open-dataset/blob/master/tutorial/tutorial_camera_only.ipynb """
+def show_camera_image(camera_image, layout, title="FRONT"):
+  """Display the given camera image."""
+  ax = plt.subplot(*layout)
+  plt.imshow(camera_image)
+  plt.title(title)
+  plt.grid(False)
+  plt.axis('off')
+  return ax
+
+def draw_2d_box(ax, u, v, color, linewidth=1):
+  """Draws 2D bounding boxes as rectangles onto the given axis."""
+  rect = patches.Rectangle(
+      xy=(u.min(), v.min()),
+      width=u.max() - u.min(),
+      height=v.max() - v.min(),
+      linewidth=linewidth,
+      edgecolor=color,
+      facecolor=list(color) + [0.1])  # Add alpha for opacity
+  ax.add_patch(rect)
+
+
+def draw_3d_wireframe_box(ax, u, v, color, linewidth=3):
+  """Draws 3D wireframe bounding boxes onto the given axis."""
+  # List of lines to interconnect. Allows for various forms of connectivity.
+  # Four lines each describe bottom face, top face and vertical connectors.
+  lines = ((0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
+           (0, 4), (1, 5), (2, 6), (3, 7))
+
+  for (point_idx1, point_idx2) in lines:
+    line = plt.Line2D(
+        xdata=(int(u[point_idx1]), int(u[point_idx2])),
+        ydata=(int(v[point_idx1]), int(v[point_idx2])),
+        linewidth=linewidth,
+        color=list(color) + [0.5])  # Add alpha for opacity
+    ax.add_line(line)
+

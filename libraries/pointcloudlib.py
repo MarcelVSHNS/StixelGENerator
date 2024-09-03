@@ -74,6 +74,67 @@ def remove_line_of_sight(points: np.array,
     return filtered_points
 
 
+def filter_points_by_semantic(points: np.array, param: Dict[str, float]) -> np.array:
+    mask = np.isin(points['sem_seg'], param['classes'])
+    # Use the mask to filter the points
+    filtered_points = points[mask]
+    return filtered_points
+
+
+def filter_points_by_label(points: np.array, bboxes) -> np.array:
+    """
+    Filter LiDAR points to keep only those within the given bounding boxes.
+
+    Args:
+    lidar_points: np.ndarray of shape (N, 3), where N is the number of points.
+                  Each point is represented as (x, y, z).
+    boxes: List of bounding boxes. Each box is a dictionary with keys:
+           center_x, center_y, center_z, length, width, height, heading.
+
+    Returns:
+    Filtered LiDAR points that lie within any of the given bounding boxes.
+    """
+    filtered_points = []
+    mask = np.zeros(len(points), dtype=bool)
+    for box in bboxes:
+        # Extract box parameters
+        cx, cy, cz = box.box.center_x, box.box.center_y, box.box.center_z
+        length, width, height = box.box.length, box.box.width, box.box.height
+        heading = box.box.heading
+
+        # Compute rotation matrix around the Z axis (heading)
+        cos_h = np.cos(heading)
+        sin_h = np.sin(heading)
+        rotation_matrix = np.array([
+            [cos_h, -sin_h, 0],
+            [sin_h, cos_h, 0],
+            [0, 0, 1]
+        ])
+
+        # Translate LiDAR points to the box center
+        translated_points = np.column_stack((
+            points['x'] - cx,
+            points['y'] - cy,
+            points['z'] - cz
+        ))
+
+        # Rotate points to align with the box axes
+        aligned_points = np.dot(translated_points, rotation_matrix)
+
+        # Check if points are within the box bounds
+        in_box = (
+                (aligned_points[:, 0] >= -length / 2) & (aligned_points[:, 0] <= length / 2) &
+                (aligned_points[:, 1] >= -width / 2) & (aligned_points[:, 1] <= width / 2) &
+                (aligned_points[:, 2] >= -height / 2) & (aligned_points[:, 2] <= height / 2)
+        )
+
+        # Update mask: any point within any box should be marked as True
+        mask |= in_box
+
+        # Return only the points that fall inside any of the bounding boxes
+    return points[mask]
+
+
 def remove_far_points(points: np.array, param: Dict[str, float]) -> np.array:
     """
     Args:
@@ -117,7 +178,7 @@ def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
     a, b, c, d = plane_model
     filtered_points = []
     for point in points:
-        x, y, z, proj_x, proj_y = point
+        x, y, z, proj_x, proj_y, sem_seg = point
         if a * x + b * y + c * z + d >= 0:
             filtered_points.append(point)
     return np.array(filtered_points)
@@ -125,13 +186,16 @@ def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
 
 def group_points_by_angle(points: np.array,
                           param: Dict[str, float],
-                          camera_info: CameraInfo
+                          camera_info: CameraInfo,
+                          align_pts: bool = False
                           ) -> List[np.array]:
     """
     Groups points based on their azimuth angles.
     Args:
         param: ['group_angle'] with fields: eps, min_samples
         points: A numpy array of points, where each point has 'x' and 'y' coordinates.
+        camera_info:
+        align_pts:
     Returns:
         A list of numpy arrays, where each array represents a cluster of points with similar azimuth angles.
     """
@@ -143,26 +207,36 @@ def group_points_by_angle(points: np.array,
     # azimuth_angles = np.mod(azimuth_angles, 2 * np.pi)
     # Perform DBSCAN clustering based on azimuth angles only
     df = pd.DataFrame(sorted_azimuth_angles.reshape(-1, 1), columns=['azimuth'])
-    bins = np.linspace(param['min_angle'], param['max_angle'], param['num_groups'] + 1)
+    min = df['azimuth'].min()
+    max = df['azimuth'].max()
+    num_groups = int(param['total_num_angles'] / (2 * np.pi) * abs(min - max))
+    bins = np.linspace(min, max, num_groups + 1)
     df['cluster'], _cluster = pd.cut(df['azimuth'], bins=bins, labels=False, retbins=True)
     labels = df['cluster'].to_numpy()
     interval_means = [(_cluster[i] + _cluster[i + 1]) / 2 for i in range(len(_cluster) - 1)]
     # Group points based on labels and compute average angles
     # create a list for every found cluster, if you found not matched points subtract 1
-    angle_cluster = [[] for _ in range(int(param['num_groups']))]
-    angle_cluster = [[] for _ in range(int(param['num_groups']) - (1 if np.nan in labels else 0))]
+    # angle_cluster = [[] for _ in range(int(param['num_groups']))]
+    angle_cluster = [[] for _ in range(int(num_groups) - (1 if np.nan in labels else 0))]
     # fill in the points
     btm_calc = BottomPointCalculator(camera_info)
     for point, label in zip(sorted_points, labels):
         if not np.isnan(label):
             angle_cluster[int(label)].append(point)
+
     for angle, cluster_mean in zip(angle_cluster, interval_means):
-        for i, point in enumerate(angle):
-            pt_sph = cart_2_sph(point)
-            pt_sph['az'] = cluster_mean
-            pt_cart = sph_2_cart(pt_sph)
-            proj_x, proj_y = btm_calc.project_point_into_image(pt_cart)
-            angle[i] = np.array(tuple([pt_cart['x'], pt_cart['y'], pt_cart['z'], proj_x, proj_y]), dtype=point_dtype)
+        if align_pts:
+            for i, point in enumerate(angle):
+                pt_sph = cart_2_sph(point)
+                pt_sph['az'] = cluster_mean
+                pt_cart = sph_2_cart(pt_sph)
+                proj_x, proj_y = btm_calc.project_point_into_image(pt_cart)
+                angle[i] = np.array(tuple([pt_cart['x'], pt_cart['y'], pt_cart['z'], proj_x, proj_y, point['sem_seg']]), dtype=point_dtype)
+        else:
+            for i, point in enumerate(angle):
+                angle[i] = np.array(tuple([point['x'], point['y'], point['z'], point['proj_x'], point['proj_y'], point['sem_seg']]),
+                                    dtype=point_dtype)
+
     return angle_cluster
 
 
@@ -214,9 +288,9 @@ class Cluster:
         #d -= 0.05
         assert c != 0, "Dont divide by 0"
         for i, point in enumerate(points):
-            x, y, z, proj_x, proj_y = point
+            x, y, z, proj_x, proj_y, sem_seg = point
             z_ref = -(a * x + b * y + d) / c
-            referenced_points[i] = (x, y, z, proj_x, proj_y, z_ref)
+            referenced_points[i] = (x, y, z, proj_x, proj_y, sem_seg, z_ref)
         return referenced_points
 
     def assign_reference_z_to_points_from_object_low(self, points):
@@ -224,8 +298,8 @@ class Cluster:
         self.sort_points_top_obj_stixel()
         cluster_point_ref_z = self.points[-1]['z']
         for i, point in enumerate(points):
-            x, y, z, proj_x, proj_y = point
-            referenced_points[i] = (x, y, z, proj_x, proj_y, cluster_point_ref_z)
+            x, y, z, proj_x, proj_y, sem_seg = point
+            referenced_points[i] = (x, y, z, proj_x, proj_y, sem_seg, cluster_point_ref_z)
         return referenced_points
 
     def check_object_position(self):

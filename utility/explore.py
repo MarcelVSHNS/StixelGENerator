@@ -32,9 +32,22 @@ def main():
     sample: Data = drive[config["exploring"]["frame_num"]]
 
     """ 0.2 Check out if your own camera-lidar projection works (camera calib data are not always and for everyone
-     unique explained). It is necessary to calculate the correct bottom point of a finished Stixel."""
-    #new_pts = sample.projection_test()
-    points_on_img = draw_points_on_image(np.array(sample.image), sample.points, coloring_sem=True)
+     unique explained). It is necessary to calculate the correct bottom point of a finished Stixel. 
+     coloring_sem=waymo_laser_label_color """
+    # new_pts = sample.projection_test()
+    # points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
+    # points_on_img.show()
+
+    """ Semantic filtering 
+    pts_filter_sem_seg = filter_points_by_semantic(points=sample.points,
+                                                   param=dataset.config['semantic_filter'])
+    points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_sem_seg)
+    points_on_img.show()"""
+
+    """ Label filtering """
+    pts_filter_bbox = filter_points_by_label(points=sample.points,
+                                                bboxes=sample.laser_labels)
+    points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_bbox)
     points_on_img.show()
 
     """ 1. Adjust the ground detection. Try to make it rough! the street should disappear every time! Repeat the same
@@ -48,13 +61,13 @@ def main():
 
     # 1.1 Self explained: adjust the maximum distance of points, be aware that possibly no points exist in the scene
     # if this value is too low
-    lp_without_far_pts = remove_far_points(points=lp_without_ground,
+    pts_filter_bbox = remove_far_points(points=pts_filter_bbox,
                                            param=dataset.config['rm_far_pts'])
     # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_far_pts)
     # points_on_img.show()
 
     # 1.2 Measurement point below the road, do they exist??? ... not anymore ;)
-    lp_plane_model_corrected = remove_pts_below_plane_model(points=lp_without_far_pts,
+    pts_filter_bbox = remove_pts_below_plane_model(points=pts_filter_bbox,
                                                             plane_model=ground_model)
     # points_on_img = draw_points_on_image(np.array(sample.image), lp_plane_model_corrected)
     # points_on_img.show()
@@ -62,18 +75,18 @@ def main():
     """ 2. Depending on your vehicle setup (extrinsic calibration from lidar to camera), the lidar might see areas, 
     which the camera does not - normally because of the lifted viewing angle of the top lidar. This function helps to 
     just use points whose are in the field of view of the camera. Refer to 
-    https://www.open3d.org/docs/latest/tutorial/Basic/pointcloud.html#Hidden-point-removal"""
+    https://www.open3d.org/docs/latest/tutorial/Basic/pointcloud.html#Hidden-point-removal
     lp_without_los = remove_line_of_sight(points=lp_plane_model_corrected,
                                           camera_pose=sample.camera_info.extrinsic.xyz,
                                           param=dataset.config['rm_los'])
     # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_los)
-    # points_on_img.show()
+    # points_on_img.show()"""
 
     """ 3. Check angle grouping. This is important because the algorithm scans for stixel line by line (lidar angle). 
     The visualization shows groups in different colors. You should set the eps to a value which divide every close
     point into one group; more far away points can be clustered with more than one scanline but in general there should
     be scan lines in direction of elevation for every angle."""
-    angled_pts = group_points_by_angle(points=lp_without_los,
+    angled_pts = group_points_by_angle(points=pts_filter_bbox,
                                        param=dataset.config['group_angle'],
                                        camera_info=sample.camera_info)
     angled_img = draw_clustered_points_on_image(np.array(sample.image), angled_pts, depth_coloring=False)
@@ -103,7 +116,7 @@ def main():
                                  stixel_width=8,
                                  stixel_param=dataset.config['stixel_cluster'],
                                  angle_param=dataset.config['group_angle'])
-    stixel_list = stixel_gen.generate_stixel(lp_without_los)
+    stixel_list = stixel_gen.generate_stixel(pts_filter_bbox)
     gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list, stixel_width=config['grid_step'])
     gt_stixel_img.show()
 

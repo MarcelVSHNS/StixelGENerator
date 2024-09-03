@@ -9,7 +9,7 @@ point_dtype_sph = np.dtype([
     ('el', np.float64),
     ('proj_x', np.int32),
     ('proj_y', np.int32),
-    ('sem', np.int32)
+    ('sem_seg', np.int32)
 ])
 
 
@@ -19,7 +19,7 @@ point_dtype = np.dtype([
     ('z', np.float64),
     ('proj_x', np.int32),
     ('proj_y', np.int32),
-    ('sem', np.int32)
+    ('sem_seg', np.int32)
 ])
 
 point_dtype_ext = np.dtype([
@@ -28,7 +28,7 @@ point_dtype_ext = np.dtype([
     ('z', np.float64),
     ('proj_x', np.int32),
     ('proj_y', np.int32),
-    ('sem', np.int32),
+    ('sem_seg', np.int32),
     ('z_ref', np.float64)
 ])
 
@@ -75,6 +75,7 @@ class Stixel:
         self.depth = self.calculate_depth(top_point)
         self.image_size = image_size
         self.grid_step = grid_step
+        self.sem_seg = top_point['sem_seg']
 
         self.force_stixel_to_grid()
         self.check_integrity()

@@ -12,10 +12,10 @@ rm_los:
 rm_far_pts:
   range_threshold: 75.0
 group_angle:
-  min_angle: -0.43
-  max_angle: 0.43
-  num_groups: 240
+  total_num_angles: 2650
 stixel_cluster:
   min_samples: 2
   cluster_eps: 100
+semantic_filter:
+  classes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16]  # 15: vegetation, 14: building
 

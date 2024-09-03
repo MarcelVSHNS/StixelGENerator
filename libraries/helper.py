@@ -127,7 +127,7 @@ def cart_2_sph(point: np.array):
     el = np.arctan2(z, hxy)
     az = np.arctan2(y, x)
     point_sph = np.array(
-        (r, az, el, point['proj_x'], point['proj_y']),
+        (r, az, el, point['proj_x'], point['proj_y'], point['sem_seg']),
         dtype=point_dtype_sph
     )
     return point_sph
@@ -140,7 +140,7 @@ def sph_2_cart(point: np.array):
     y = r_cos_theta * np.sin(az)
     z = r * np.sin(el)
     point_cart = np.array(
-        (x, y, z, point['proj_x'], point['proj_y']),
+        (x, y, z, point['proj_x'], point['proj_y'], point['sem_seg']),
         dtype=point_dtype
     )
     return point_cart
@@ -195,8 +195,7 @@ class BottomPointCalculator:
         pt = np.stack([point['x'], point['y'], point['z']], axis=-1)
         # P = K * Rect * R|t with R|t = T
         # https://docs.ros.org/en/melodic/api/sensor_msgs/html/msg/CameraInfo.html
-        # TODO: check if K is correctly loaded (before used: P)
-        point_in_camera = self.camera_info.K.dot(self.camera_info.R.dot(self.camera_info.T.dot(np.append(pt[:3], 1))))
+        point_in_camera = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(np.append(pt[:3], 1))))
         # pixel = np.dot(self.camera_mtx, point_in_camera[:3])
         u = int(point_in_camera[0] / point_in_camera[2])
         v = int(point_in_camera[1] / point_in_camera[2])

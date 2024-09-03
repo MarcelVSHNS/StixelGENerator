@@ -59,7 +59,8 @@ class KittiData(BaseData):
 
         projection_list = np.array(points_in_camera[:, 0:2].astype(int))
         pts_coordinates = np.array(velo[:, 0:3])
-        combined_data = np.hstack((pts_coordinates, projection_list))
+        sem_seg = np.zeros(len(pts_coordinates))[:, np.newaxis]
+        combined_data = np.hstack((pts_coordinates, projection_list, sem_seg))
         pts = np.array([tuple(row) for row in combined_data], dtype=point_dtype)
         return pts
 

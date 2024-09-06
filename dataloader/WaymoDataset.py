@@ -7,12 +7,13 @@ from typing import List, Tuple
 import matplotlib.pyplot as plt
 from matplotlib import patches
 from waymo_open_dataset import dataset_pb2 as open_dataset
+from waymo_open_dataset.label_pb2 import Label
 from waymo_open_dataset.utils import frame_utils, transform_utils, box_utils
 from waymo_open_dataset.v2 import convert_range_image_to_point_cloud
 from waymo_open_dataset.wdl_limited.camera.ops import py_camera_model_ops
 from PIL import Image
-from libraries.Stixel import point_dtype
-from libraries import draw_3d_wireframe_box, draw_2d_box
+from libraries.Stixel import point_dtype, point_dtype_stx
+#from libraries import draw_3d_wireframe_box, draw_2d_box
 from dataloader import BaseData, CameraInfo
 
 
@@ -125,9 +126,9 @@ def project_vehicle_to_image(vehicle_pose, calibration, points):
                                             camera_image_metadata,
                                             world_points).numpy()
 
-
+"""
 def show_projected_camera_synced_boxes(frame, camera_image, ax, draw_3d_box=False):
-  """Displays camera_synced_box 3D labels projected onto camera."""
+  # Displays camera_synced_box 3D labels projected onto camera.
   FILTER_AVAILABLE = any(
       [label.num_top_lidar_points_in_box > 0 for label in frame.laser_labels])
 
@@ -184,10 +185,10 @@ def show_projected_camera_synced_boxes(frame, camera_image, ax, draw_3d_box=Fals
     else:
       # Draw projected 2D box onto the image.
       draw_2d_box(ax, u, v, (1.0, 1.0, 0.0))
-
+"""
 
 class WaymoData(BaseData):
-    def __init__(self, tf_frame, cam_idx):
+    def __init__(self, tf_frame, frame_num, cam_idx):
         """
         Base class for raw from waymo open dataset
         Args:
@@ -198,11 +199,9 @@ class WaymoData(BaseData):
         # front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4
         self.cam_idx: int = cam_idx
         img = sorted(tf_frame.images, key=lambda i: i.name)[cam_idx]
-        self.camera_labels: open_dataset.CameraLabels = sorted(tf_frame.projected_lidar_labels, key=lambda i: i.name)[self.cam_idx]
-        test_proj = self.camera_labels.labels[0]
-        self.name: str = f"{tf_frame.context.name}_{img.name}"
-        self.laser_labels = tf_frame.laser_labels
-        test_laser = self.laser_labels[0]
+        # self.camera_labels: open_dataset.CameraLabels = sorted(tf_frame.projected_lidar_labels, key=lambda i: i.name)[self.cam_idx]
+        self.name: str = f"{tf_frame.context.name}_{frame_num}_{open_dataset.CameraName.Name.Name(img.name)}"
+        self.laser_labels: Label = tf_frame.laser_labels
         self.image: np.array = Image.fromarray(tf.image.decode_jpeg(img.image).numpy())
         assert self.image.size == (1920, 1280), F"Check image Size of Camera idx:{self.cam_idx}"
         self.image_right = None     # Safety dummy, deprecated
@@ -268,20 +267,40 @@ class WaymoData(BaseData):
         lidar_pts = np.vstack((self.points['x'], self.points['y'], self.points['z'])).T
         lidar_pts = np.insert(lidar_pts[:, 0:3], 3, 1, axis=1).T
         img_pts = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(lidar_pts)))
+        # K * T * pt
         img_pts[:2] /= img_pts[2, :]
         img_pts = img_pts.T
         lidar_pts = lidar_pts.T
-        projection_list = np.array(img_pts[:, 0:2].astype(int))
+        projection_list = np.array(img_pts)
         pts_coordinates = np.array(lidar_pts[:, 0:3])
         combined_data = np.hstack((pts_coordinates, projection_list))
-        return np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+        return np.array([tuple(row) for row in combined_data], dtype=point_dtype_stx)
 
+    def inverse_projection(self, points):
+        img_pts = np.vstack((points['proj_x'], points['proj_y'], points['w'])).T
+        img_pts = np.insert(img_pts[:, 0:3], 3, 1, axis=1).T
+        img_pts[:2] *= img_pts[2, :]
+        # Homogeneous coordinates in the image plane
+        k_exp = np.eye(4)
+        k_exp[:3, :3] = self.camera_info.K
+        T_inverted_x = self.camera_info.T.copy()
+        # T_inverted_x[0, 3] *= 0
+        # T_inverted_x[1, 3] *= 0
+        P = k_exp @ T_inverted_x
+        # (K * T)-1 * pt
+        lidar_pts = np.linalg.inv(P) @ img_pts
+        lidar_pts = lidar_pts.T
+        pts_coordinates = np.array(lidar_pts[:, 0:3])
+        # Convert from homogeneous coordinates to 3D (divide by the last element)
+        return pts_coordinates
+    """
     def show_3d_bboxes(self):
         for index, image in enumerate(self.frame.images):
             ax = show_camera_image(image, [3, 3, index + 1])
             show_projected_lidar_labels(self.frame, image, ax)
             show_projected_camera_synced_boxes(self.frame, image, ax, draw_3d_box=False)
         plt.show()
+    """
 
 
 class WaymoDataLoader:
@@ -323,14 +342,16 @@ class WaymoDataLoader:
             print(f"Fail to open {file_name}, documented.")
             raise e
         waymo_data_chunk = []
-        for tf_frame in frames:
+        for frame_num, tf_frame in frames.items():
             # start_time = datetime.now()
             if self.additional_views:
                 for i in range(3):
                     waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
+                                                      frame_num=frame_num,
                                                       cam_idx=i))
             else:
                 waymo_data_chunk.append(WaymoData(tf_frame=tf_frame,
+                                                  frame_num=frame_num,
                                                   cam_idx=0))
                 # self.object_creation_time = datetime.now() - start_time
             if self.first_only:
@@ -340,7 +361,8 @@ class WaymoDataLoader:
     def __len__(self):
         return len(self.record_map)
 
-    def unpack_single_tfrecord_file_from_path(self, tf_record_filename):
+    @staticmethod
+    def unpack_single_tfrecord_file_from_path(tf_record_filename):
         """ Loads a tf-record file from the given path. Picks only every tenth frame to reduce the dataset and increase
         the diversity of it. With camera_segmentation_only = True, every availabe frame is picked (every tenth is annotated)
         Args:
@@ -348,7 +370,7 @@ class WaymoDataLoader:
         Returns: a list of frames from the file
         """
         dataset = tf.data.TFRecordDataset(tf_record_filename, compression_type='')
-        frame_list = []
+        frame_list = {}
         frame_num = 0
         for data in dataset:
             frame = open_dataset.Frame()
@@ -356,6 +378,6 @@ class WaymoDataLoader:
             # if frame.images[0].camera_segmentation_label.panoptic_label:
             # if len(frame.camera_labels) != 0 and len(frame.laser_labels) != 0:
             if frame.lasers[0].ri_return1.segmentation_label_compressed:
-                frame_list.append(frame)
+                frame_list[frame_num] = frame
             frame_num += 1
         return frame_list

@@ -22,6 +22,15 @@ point_dtype = np.dtype([
     ('sem_seg', np.int32)
 ])
 
+point_dtype_stx = np.dtype([
+    ('x', np.float64),
+    ('y', np.float64),
+    ('z', np.float64),
+    ('proj_x', np.int32),
+    ('proj_y', np.int32),
+    ('w', np.float64)
+])
+
 point_dtype_ext = np.dtype([
     ('x', np.float64),
     ('y', np.float64),

@@ -1,10 +1,12 @@
 import os
+
+import numpy as np
 import yaml
 from PIL import Image
 import pandas as pd
 from typing import List
 from datetime import datetime
-from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model
+from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model, filter_points_by_label, filter_points_by_semantic
 
 # open Config
 with open('config.yaml') as yaml_file:
@@ -24,7 +26,7 @@ def main():
     organised by drive.
     """
     # config['phases']      'validation', 'testing', 'training'
-    for config_phase in ['testing']:
+    for config_phase in ['validation', 'train']:
         phase = config_phase
         with open(f"failures_{phase}.txt", "w") as file:
             file.write("Record names by phase, which failed to open: \n")
@@ -74,14 +76,14 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
             break
         for frame in data_chunk:
             try:
-                lp_without_ground, plane_model = remove_ground(frame.points,
-                                                               dataloader.config['rm_gnd'])
-                lidar_pts = remove_far_points(lp_without_ground,
-                                              dataloader.config['rm_far_pts'])
-                lidar_pts = remove_pts_below_plane_model(lidar_pts,
-                                                         plane_model)
-                lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz,
-                                                 dataloader.config['rm_los'])
+                if config['generator'] == 'default':
+                    lidar_pts, plane_model = default_generator(frame, dataloader)
+                elif config['generator'] == 'bbox':
+                    lidar_pts, plane_model = bbox_generator(frame, dataloader)
+                elif config['generator'] == 'semantic':
+                    lidar_pts, plane_model = semantic_filtering_generator(frame, dataloader)
+                else:
+                    raise ValueError("Not recognized generator.")
                 # camera is direct under lidar, no los
                 stixel_gen = StixelGenerator(camera_info=frame.camera_info,
                                              img_size=dataloader.img_size,
@@ -95,12 +97,12 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
                                        image_right=frame.image_right if dataloader.stereo_available else None,
                                        stixels=stixel_list,
                                        dataset_name=dataloader.name,
-                                       name=f"{frame.name}_{str(frame_num)}",
+                                       name=f"{frame.name}",
                                        export_phase=phase)
                 # print(f"Frame {frame_num + 1} from {len(data_chunk)} done.")
                 frame_num += 1
             except Exception as e:
-                print(f"{frame.name}_{str(frame_num)} failed due to {e}.")
+                print(f"{frame.name} failed due to {e}.")
                 continue
         print(f"Record-file with idx {index + 1}/ {len(dataloader)} ({round(100/len(dataloader)*(index + 1), 1)}%) finished with {int(frame_num/1)} frames")
         step_time = datetime.now() - overall_start_time
@@ -125,11 +127,12 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "FRONT")
     right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
-    label_path = os.path.join(base_path, "Stixel")
+    label_path = os.path.join(base_path, f"Stixel_{config['generator']}")
     os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     # save images
-    image_left.save(os.path.join(left_img_path, name + ".png"))
+    if not os.path.isfile(os.path.join(left_img_path, name + ".png")):
+        image_left.save(os.path.join(left_img_path, name + ".png"))
     if image_right is not None and export_phase == 'testing':
         os.makedirs(right_img_path, exist_ok=True)
         image_right.save(os.path.join(right_img_path, name + ".png"))
@@ -159,6 +162,39 @@ def _chunks(lst, n) -> List[List[int]]:
     """
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
+
+def default_generator(frame, dataloader) -> np.array:
+    lp_without_ground, plane_model = remove_ground(frame.points,
+                                                   dataloader.config['rm_gnd'])
+    lidar_pts = remove_far_points(lp_without_ground,
+                                  dataloader.config['rm_far_pts'])
+    lidar_pts = remove_pts_below_plane_model(lidar_pts,
+                                             plane_model)
+    lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz,
+                                     dataloader.config['rm_los'])
+    return lidar_pts, plane_model
+
+
+def bbox_generator(frame, dataloader):
+    pts_filter_bbox = filter_points_by_label(points=frame.points,
+                                             bboxes=frame.laser_labels)
+    lp_without_ground, ground_model = remove_ground(points=frame.points,
+                                                    param=dataloader.config['rm_gnd'])
+    pts_filter_bbox = remove_far_points(points=pts_filter_bbox,
+                                        param=dataloader.config['rm_far_pts'])
+    pts_filter_bbox = remove_pts_below_plane_model(points=pts_filter_bbox,
+                                                   plane_model=ground_model)
+    return pts_filter_bbox, ground_model
+
+
+def semantic_filtering_generator(frame, dataloader):
+    pts_filter_sem_seg = filter_points_by_semantic(points=frame.points,
+                                                   param=dataloader.config['semantic_filter'])
+    lp_without_ground, ground_model = remove_ground(points=frame.points,
+                                                    param=dataloader.config['rm_gnd'])
+    pts_filter_bbox = remove_far_points(points=pts_filter_sem_seg,
+                                        param=dataloader.config['rm_far_pts'])
+    return pts_filter_bbox, ground_model
 
 
 if __name__ == "__main__":

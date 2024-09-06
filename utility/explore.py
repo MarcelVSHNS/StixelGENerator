@@ -1,8 +1,10 @@
 from dataloader import WaymoDataLoader as Dataset
 from libraries import *
+import open3d as o3d
 import numpy as np
 import yaml
 import random
+from libraries.Stixel import point_dtype_ext
 
 with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
@@ -47,8 +49,8 @@ def main():
     """ Label filtering """
     pts_filter_bbox = filter_points_by_label(points=sample.points,
                                                 bboxes=sample.laser_labels)
-    points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_bbox)
-    points_on_img.show()
+    # points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_bbox)
+    # points_on_img.show()
 
     """ 1. Adjust the ground detection. Try to make it rough! the street should disappear every time! Repeat the same
      configuration (libraries/pcl-config.yaml) multiple times to proof your values. Try not to make it precise, the
@@ -89,8 +91,8 @@ def main():
     angled_pts = group_points_by_angle(points=pts_filter_bbox,
                                        param=dataset.config['group_angle'],
                                        camera_info=sample.camera_info)
-    angled_img = draw_clustered_points_on_image(np.array(sample.image), angled_pts, depth_coloring=False)
-    angled_img.show()
+    # angled_img = draw_clustered_points_on_image(np.array(sample.image), angled_pts, depth_coloring=False)
+    # angled_img.show()
     if config['explore_data_deep']:
         print(f"From right to left with {len(angled_pts)} angeles.")
         if len(angled_pts[config['exploring']['col']]) != 0:
@@ -117,8 +119,80 @@ def main():
                                  stixel_param=dataset.config['stixel_cluster'],
                                  angle_param=dataset.config['group_angle'])
     stixel_list = stixel_gen.generate_stixel(pts_filter_bbox)
-    gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list, stixel_width=config['grid_step'])
-    gt_stixel_img.show()
+    # gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list, stixel_width=config['grid_step'])
+    # gt_stixel_img.show()
+
+    stx_pts = []
+    for stx in stixel_list:
+        stx_pts.append(stx.top_point)
+
+    new_img_pts = sample.projection_test()
+    new_pts = sample.inverse_projection(new_img_pts)
+    coord = np.vstack((new_img_pts['x'], new_img_pts['y'], new_img_pts['z'])).T
+    coord = np.insert(coord[:, 0:3], 3, 1, axis=1).T
+    dist_1 = sample.camera_info.T @ coord
+    dist_1 = dist_1.T
+    dist = np.linalg.norm(dist_1)
+    # dist = np.sqrt(new_img_pts['x']**2 + new_img_pts['y']**2 + new_img_pts['z']**2)
+    ws = new_img_pts['w']
+    k = dist/ws
+
+
+    points_on_img = draw_points_on_image(np.array(sample.image), new_img_pts)
+    points_on_img.show()
+    pcd = o3d.geometry.PointCloud()
+    stx_pts = np.array([tuple(row) for row in np.array(stx_pts)], dtype=point_dtype_ext)
+    xyz = np.vstack((stx_pts['x'], stx_pts['y'], stx_pts['z'])).T
+    xyz_new = np.vstack((new_img_pts['x'], new_img_pts['y'], new_img_pts['z'])).T
+    pcd.points = o3d.utility.Vector3dVector(new_pts)
+
+    bounding_boxes = []
+    for box in sample.laser_labels:
+        center_x, center_y, center_z = box.camera_synced_box.center_x, box.camera_synced_box.center_y, box.camera_synced_box.center_z
+        length, width, height = box.camera_synced_box.length, box.camera_synced_box.width, box.camera_synced_box.height
+        heading = box.camera_synced_box.heading
+
+        box_corners = np.array([
+            [-length / 2, -width / 2, -height / 2],
+            [length / 2, -width / 2, -height / 2],
+            [length / 2, width / 2, -height / 2],
+            [-length / 2, width / 2, -height / 2],
+            [-length / 2, -width / 2, height / 2],
+            [length / 2, -width / 2, height / 2],
+            [length / 2, width / 2, height / 2],
+            [-length / 2, width / 2, height / 2]
+        ])
+
+        # Schritt 2: Rotation (Heading) um die Z-Achse anwenden
+        rotation_matrix = np.array([
+            [np.cos(heading), -np.sin(heading), 0],
+            [np.sin(heading), np.cos(heading), 0],
+            [0, 0, 1]
+        ])
+
+        # Eckpunkte drehen und anschließend um das Zentrum verschieben
+        rotated_corners = box_corners @ rotation_matrix.T
+        rotated_corners += np.array([center_x, center_y, center_z])
+
+        # Schritt 3: Bounding Box in Open3D visualisieren
+        lines = [
+            [0, 1], [1, 2], [2, 3], [3, 0],  # Untere Ebene
+            [4, 5], [5, 6], [6, 7], [7, 4],  # Obere Ebene
+            [0, 4], [1, 5], [2, 6], [3, 7]  # Verbindungen zwischen Ebenen
+        ]
+
+        colors = [[1, 0, 0] for i in range(len(lines))]  # Farbe Rot
+
+        # Erstelle LineSet für die Box-Visualisierung
+        line_set = o3d.geometry.LineSet()
+        line_set.points = o3d.utility.Vector3dVector(rotated_corners)
+        line_set.lines = o3d.utility.Vector2iVector(lines)
+        line_set.colors = o3d.utility.Vector3dVector(colors)
+        bounding_boxes.append(line_set)
+
+    # Visualise point cloud
+    o3d.visualization.draw_geometries([pcd] + bounding_boxes)
+
 
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ def main():
     """ 0.1 Use the plc-config file to make adjustments and customizations to your data. """
     dataset: Dataset = Dataset(data_dir=config['raw_data_path'],
                                phase=config['phase'],
-                               first_only=True)
+                               first_only=False)
     if config['exploring']['idx'] is not None:
         assert config["exploring"]["idx"] <= len(dataset)
         idx = config['exploring']['idx']
@@ -58,8 +58,8 @@ def main():
      value masks all values above this value to avoid detecting large walls. """
     lp_without_ground, ground_model = remove_ground(points=sample.points,
                                                     param=dataset.config['rm_gnd'])
-    # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_ground)
-    # points_on_img.show()
+    points_on_img = draw_points_on_image(np.array(sample.image), lp_without_ground)
+    points_on_img.show()
 
     # 1.1 Self explained: adjust the maximum distance of points, be aware that possibly no points exist in the scene
     # if this value is too low
@@ -69,10 +69,10 @@ def main():
     # points_on_img.show()
 
     # 1.2 Measurement point below the road, do they exist??? ... not anymore ;)
-    pts_filter_bbox = remove_pts_below_plane_model(points=pts_filter_bbox,
-                                                            plane_model=ground_model)
-    # points_on_img = draw_points_on_image(np.array(sample.image), lp_plane_model_corrected)
-    # points_on_img.show()
+    #pts_filter_bbox = remove_pts_below_plane_model(points=pts_filter_bbox,
+    #                                                        plane_model=ground_model)
+    #points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_bbox)
+    #points_on_img.show()
 
     """ 2. Depending on your vehicle setup (extrinsic calibration from lidar to camera), the lidar might see areas, 
     which the camera does not - normally because of the lifted viewing angle of the top lidar. This function helps to 
@@ -119,31 +119,29 @@ def main():
                                  stixel_param=dataset.config['stixel_cluster'],
                                  angle_param=dataset.config['group_angle'])
     stixel_list = stixel_gen.generate_stixel(pts_filter_bbox)
-    # gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list, stixel_width=config['grid_step'])
-    # gt_stixel_img.show()
+    gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list, stixel_width=config['grid_step'])
+    gt_stixel_img.show()
 
     stx_pts = []
     for stx in stixel_list:
         stx_pts.append(stx.top_point)
 
-    new_img_pts = sample.projection_test()
-    new_pts = sample.inverse_projection(new_img_pts)
-    coord = np.vstack((new_img_pts['x'], new_img_pts['y'], new_img_pts['z'])).T
+    # new_img_pts = sample.projection_test()
+    new_pts = sample.inverse_projection(sample.points)
+    coord = np.vstack((sample.points['x'], sample.points['y'], sample.points['z'])).T
     coord = np.insert(coord[:, 0:3], 3, 1, axis=1).T
-    dist_1 = sample.camera_info.T @ coord
+    waymo_cam_RT = np.array([0, -1, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0, 0, 0, 1]).reshape(4, 4)
+    dist_1 = sample.camera_info.T @ waymo_cam_RT @ coord
     dist_1 = dist_1.T
-    dist = np.linalg.norm(dist_1)
+    dist = np.linalg.norm(dist_1, axis=1)
     # dist = np.sqrt(new_img_pts['x']**2 + new_img_pts['y']**2 + new_img_pts['z']**2)
-    ws = new_img_pts['w']
+    ws = sample.points['w']
     k = dist/ws
 
-
-    points_on_img = draw_points_on_image(np.array(sample.image), new_img_pts)
-    points_on_img.show()
     pcd = o3d.geometry.PointCloud()
     stx_pts = np.array([tuple(row) for row in np.array(stx_pts)], dtype=point_dtype_ext)
     xyz = np.vstack((stx_pts['x'], stx_pts['y'], stx_pts['z'])).T
-    xyz_new = np.vstack((new_img_pts['x'], new_img_pts['y'], new_img_pts['z'])).T
+    xyz_new = np.vstack((sample.points['x'], sample.points['y'], sample.points['z'])).T
     pcd.points = o3d.utility.Vector3dVector(new_pts)
 
     bounding_boxes = []

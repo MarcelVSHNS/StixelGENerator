@@ -26,7 +26,7 @@ def main():
     organised by drive.
     """
     # config['phases']      'validation', 'testing', 'training'
-    for config_phase in ['validation', 'train']:
+    for config_phase in ['validation', 'training']:
         phase = config_phase
         with open(f"failures_{phase}.txt", "w") as file:
             file.write("Record names by phase, which failed to open: \n")
@@ -143,7 +143,7 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
                             int(stixel.column),
                             int(stixel.top_row),
                             int(stixel.bottom_row),
-                            round(stixel.depth, 1),
+                            round(stixel.depth, 2),
                             int(stixel.sem_seg)])
     target: pd.DataFrame = pd.DataFrame(target_list)
     target.columns = ['img', 'u', 'vT', 'vB', 'd', 'label']

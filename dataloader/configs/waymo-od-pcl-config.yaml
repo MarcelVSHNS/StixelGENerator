@@ -1,5 +1,5 @@
 rm_gnd:
-  z_max: 0.42
+  z_max: 0.84
   distance_threshold: 0.24
   ransac_n: 3
   num_iterations: 10000

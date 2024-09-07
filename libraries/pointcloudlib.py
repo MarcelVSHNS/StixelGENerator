@@ -170,7 +170,7 @@ def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
     Removes points that are below the plane model from the given array of points.
     Args:
         points (numpy.array): An array of points, where each point is represented by an array of five values
-        (x, y, z, proj_x, proj_y).
+        (x, y, z, u, v).
         plane_model: A tuple representing the coefficients of the plane model (a, b, c, d), where a, b, c are the
         normal vector components of the plane and d is the distance from the origin.
     Returns:
@@ -178,7 +178,7 @@ def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
     a, b, c, d = plane_model
     filtered_points = []
     for point in points:
-        x, y, z, proj_x, proj_y, sem_seg = point
+        x, y, z, u, v, w, sem_seg = point
         if a * x + b * y + c * z + d >= 0:
             filtered_points.append(point)
     return np.array(filtered_points)
@@ -230,11 +230,11 @@ def group_points_by_angle(points: np.array,
                 pt_sph = cart_2_sph(point)
                 pt_sph['az'] = cluster_mean
                 pt_cart = sph_2_cart(pt_sph)
-                proj_x, proj_y = btm_calc.project_point_into_image(pt_cart)
-                angle[i] = np.array(tuple([pt_cart['x'], pt_cart['y'], pt_cart['z'], proj_x, proj_y, point['sem_seg']]), dtype=point_dtype)
+                u, v = btm_calc.project_point_into_image(pt_cart)
+                angle[i] = np.array(tuple([pt_cart['x'], pt_cart['y'], pt_cart['z'], u, v, point['w'], point['sem_seg']]), dtype=point_dtype)
         else:
             for i, point in enumerate(angle):
-                angle[i] = np.array(tuple([point['x'], point['y'], point['z'], point['proj_x'], point['proj_y'], point['sem_seg']]),
+                angle[i] = np.array(tuple([point['x'], point['y'], point['z'], point['u'], point['v'], point['w'], point['sem_seg']]),
                                     dtype=point_dtype)
 
     return angle_cluster
@@ -244,7 +244,7 @@ class Cluster:
     """
     Class representing a cluster of points.
     Attributes:
-    - points (np.array): Array of points in the cluster. Shape: x, y, z, proj_x, proj_y, z_ref
+    - points (np.array): Array of points in the cluster. Shape: x, y, z, u, v, z_ref
     - plane_model (tuple): Tuple of four coefficients (a, b, c, d) representing the plane model of the cluster
     Methods:
     - __len__() -> int: Returns the number of points in the cluster
@@ -261,7 +261,7 @@ class Cluster:
         self.points: np.array = points
         self.is_standing_on_ground = self.check_object_position()
         if self.is_standing_on_ground:
-            self.points: np.array = self.assign_reference_z_to_points_from_ground(points)    # Shape: x, y, z, proj_x, proj_y, z_ref
+            self.points: np.array = self.assign_reference_z_to_points_from_ground(points)    # Shape: x, y, z, u, v, z_ref
         else:
             self.points: np.array = self.assign_reference_z_to_points_from_object_low(points)
         self.mean_range: float = self.calculate_mean_range()
@@ -288,9 +288,9 @@ class Cluster:
         #d -= 0.05
         assert c != 0, "Dont divide by 0"
         for i, point in enumerate(points):
-            x, y, z, proj_x, proj_y, sem_seg = point
+            x, y, z, u, v, w, sem_seg = point
             z_ref = -(a * x + b * y + d) / c
-            referenced_points[i] = (x, y, z, proj_x, proj_y, sem_seg, z_ref)
+            referenced_points[i] = (x, y, z, u, v, w, sem_seg, z_ref)
         return referenced_points
 
     def assign_reference_z_to_points_from_object_low(self, points):
@@ -298,8 +298,8 @@ class Cluster:
         self.sort_points_top_obj_stixel()
         cluster_point_ref_z = self.points[-1]['z']
         for i, point in enumerate(points):
-            x, y, z, proj_x, proj_y, sem_seg = point
-            referenced_points[i] = (x, y, z, proj_x, proj_y, sem_seg, cluster_point_ref_z)
+            x, y, z, u, v, w, sem_seg = point
+            referenced_points[i] = (x, y, z, u, v, w, sem_seg, cluster_point_ref_z)
         return referenced_points
 
     def check_object_position(self):

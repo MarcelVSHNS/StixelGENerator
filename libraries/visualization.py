@@ -38,7 +38,7 @@ def plot_on_image(image: Image, *point_lists, colors, labels=None, y_offset=0): 
     assert len(point_lists) == len(colors);
     "Num lists and num colors doesn't fit for 2D Plot."
     for points, color, label in zip(point_lists, colors, labels or [None] * len(point_lists)):
-        ax.scatter(points['proj_x'], points['proj_y'] + y_offset, color=color, edgecolor='k', s=20, alpha=0.7, label=label)
+        ax.scatter(points['u'], points['v'] + y_offset, color=color, edgecolor='k', s=20, alpha=0.7, label=label)
 
     plt.title('Clusterpunkte auf dem Bild')
     plt.axis('off')
@@ -59,11 +59,6 @@ def extract_points_colors_labels(scanline_obj):
         colors_list.append(color)
         labels_list.append(f'Cluster {idx + 1}')
     return points_list, colors_list, labels_list
-
-
-def calculate_depth(x, y, z):
-    depth = np.sqrt(x**2 + y**2 + z**2)
-    return depth
 
 
 def get_color_from_depth(depth, min_depth, max_depth):
@@ -88,23 +83,19 @@ def draw_stixels_on_image(image, stixels: List[Stixel], stixel_width=8, alpha=0.
     return Image.fromarray(image)
 
 
-def calculate_distance(point):
-    return np.sqrt(point['x']**2 + point['y']**2 + point['z']**2)
-
-
 def draw_points_on_image(image, points, y_offset=0, coloring_sem: Optional[Dict[str, Tuple]] = None):
-    distances = [calculate_distance(point) for point in points]
-    max_distance = max(distances)
+    # distances = [calculate_distance(point) for point in points]
+    max_distance = max(points['w'])
     cmap = plt.get_cmap('viridis')
-    for point, distance in zip(points, distances):
+    for point in points:
         if coloring_sem is not None:
             color = coloring_sem[point['sem_seg']]
         else:
-            normalized_distance = distance / max_distance
+            normalized_distance = point['w'] / max_distance
             color = cmap(normalized_distance)[:3]
             color = [int(c * 255) for c in color]
-        proj_x, proj_y = point['proj_x'], point['proj_y'] + y_offset
-        cv2.circle(image, (proj_x, proj_y), 2, color, -1)
+        u, v = point['u'], point['v'] + y_offset
+        cv2.circle(image, (u, v), 2, color, -1)
     return Image.fromarray(image)
 
 
@@ -113,10 +104,10 @@ def draw_clustered_points_on_image(image, cluster_list, depth_coloring=False):
         color = colors[i % len(colors)]
         for point in cluster_list[i]:
             if depth_coloring:
-                depth = calculate_distance(point)
+                depth = point['w']
                 color = get_color_from_depth(depth, 3, 50)
-            proj_x, proj_y = int(point['proj_x']), int(point['proj_y'])
-            cv2.circle(image, (proj_x, proj_y), 2, color, -1)
+            u, v = int(point['u']), int(point['v'])
+            cv2.circle(image, (u, v), 2, color, -1)
     return Image.fromarray(image)
 
 
@@ -124,13 +115,13 @@ def draw_obj_points_on_image(image, objects, stixels: List[Stixel] = None, y_off
     for i, cluster_points in enumerate(objects):
         color = colors[i % len(colors)]
         for point in cluster_points.points:
-            proj_x, proj_y = point['proj_x'], point['proj_y'] + y_offset
-            cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+            u, v = point['u'], point['v'] + y_offset
+            cv2.circle(image, (u, v), 3, color, -1)
     if stixels is not None:
         for stixel in stixels:
-            proj_x, proj_y = stixel.top_point['proj_x'], stixel.top_point['proj_y']
+            u, v = stixel.top_point['u'], stixel.top_point['v']
             color = stixel_colors[stixel.position_class]
-            cv2.circle(image, (proj_x, proj_y), 3, color, -1)
+            cv2.circle(image, (u, v), 3, color, -1)
     return Image.fromarray(image)
 
 

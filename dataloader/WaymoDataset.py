@@ -12,7 +12,7 @@ from waymo_open_dataset.utils import frame_utils, transform_utils, box_utils
 from waymo_open_dataset.v2 import convert_range_image_to_point_cloud
 from waymo_open_dataset.wdl_limited.camera.ops import py_camera_model_ops
 from PIL import Image
-from libraries.Stixel import point_dtype, point_dtype_stx
+from libraries.Stixel import point_dtype
 #from libraries import draw_3d_wireframe_box, draw_2d_box
 from dataloader import BaseData, CameraInfo
 
@@ -236,7 +236,7 @@ class WaymoData(BaseData):
         Args:
             frame: Expects the full frame
         Returns: A list of points and a list of projections: (0 = Front, 1 = Side_left, 2 = Side_right, 3 = Left, 4 = Right)
-        shape: [x, y, z, proj_x, proj_y]
+        shape: [x, y, z, u, proj_y]
         """
         # Cuts for just the front view (front = 0, front_left = 1, side_left = 2, front_right = 3, side_right = 4)
         (range_images, camera_projections, segmentation_labels, range_image_top_pose) = \
@@ -248,36 +248,36 @@ class WaymoData(BaseData):
             range_image_top_pose)
         point_labels = convert_range_image_to_point_cloud_labels(
             frame, range_images, segmentation_labels)
-        # 3d points in vehicle frame, just pick Top LiDAR
         laser_points = points[0]
         laser_labels = point_labels[0]
         laser_projection_points = tf.constant(cp_points[0], dtype=tf.int32)
         images = sorted(frame.images, key=lambda i: i.name)
-        # define mask where the projections equal the picture view
-        # (0 = Front, 1 = Side_left, 2 = Side_right, 3 = Left, 4 = Right)
         mask = tf.equal(laser_projection_points[..., 0], images[cam_idx].name)
         # transform points after slicing it from the mask into float values
         laser_points_view = tf.gather_nd(laser_points, tf.where(mask)).numpy()
         laser_labels_view = tf.gather_nd(laser_labels, tf.where(mask)).numpy()
-        laser_camera_projections_view = tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy()
-        concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3], laser_labels_view[..., 1:]))
-        self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)
+        # laser_camera_projections_view = tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy()
+        # concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3], laser_labels_view[..., 1:]))
+        # self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)
+        projection = self._point_projection(laser_points_view)
+        combined_data = np.hstack((laser_points_view, projection, laser_labels_view[..., 1:]))
+        self.points = np.array([tuple(row) for row in combined_data], dtype=point_dtype)
 
-    def projection_test(self):
-        lidar_pts = np.vstack((self.points['x'], self.points['y'], self.points['z'])).T
-        lidar_pts = np.insert(lidar_pts[:, 0:3], 3, 1, axis=1).T
+    def _point_projection(self, points):
+        lidar_pts = np.insert(points[:, 0:3], 3, 1, axis=1).T
         img_pts = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(lidar_pts)))
         # K * T * pt
         img_pts[:2] /= img_pts[2, :]
         img_pts = img_pts.T
         lidar_pts = lidar_pts.T
         projection_list = np.array(img_pts)
-        pts_coordinates = np.array(lidar_pts[:, 0:3])
-        combined_data = np.hstack((pts_coordinates, projection_list))
-        return np.array([tuple(row) for row in combined_data], dtype=point_dtype_stx)
+        # pts_coordinates = np.array(lidar_pts[:, 0:3])
+        # combined_data = np.hstack((pts_coordinates, projection_list))
+        # return np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+        return projection_list
 
     def inverse_projection(self, points):
-        img_pts = np.vstack((points['proj_x'], points['proj_y'], points['w'])).T
+        img_pts = np.vstack((points['u'], points['v'], points['w'])).T
         img_pts = np.insert(img_pts[:, 0:3], 3, 1, axis=1).T
         img_pts[:2] *= img_pts[2, :]
         # Homogeneous coordinates in the image plane

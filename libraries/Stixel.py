@@ -7,8 +7,9 @@ point_dtype_sph = np.dtype([
     ('r', np.float64),
     ('az', np.float64),
     ('el', np.float64),
-    ('proj_x', np.int32),
-    ('proj_y', np.int32),
+    ('u', np.int32),
+    ('v', np.int32),
+    ('w', np.float64),
     ('sem_seg', np.int32)
 ])
 
@@ -17,26 +18,19 @@ point_dtype = np.dtype([
     ('x', np.float64),
     ('y', np.float64),
     ('z', np.float64),
-    ('proj_x', np.int32),
-    ('proj_y', np.int32),
+    ('u', np.int32),
+    ('v', np.int32),
+    ('w', np.float64),
     ('sem_seg', np.int32)
-])
-
-point_dtype_stx = np.dtype([
-    ('x', np.float64),
-    ('y', np.float64),
-    ('z', np.float64),
-    ('proj_x', np.int32),
-    ('proj_y', np.int32),
-    ('w', np.float64)
 ])
 
 point_dtype_ext = np.dtype([
     ('x', np.float64),
     ('y', np.float64),
     ('z', np.float64),
-    ('proj_x', np.int32),
-    ('proj_y', np.int32),
+    ('u', np.int32),
+    ('v', np.int32),
+    ('w', np.float64),
     ('sem_seg', np.int32),
     ('z_ref', np.float64)
 ])
@@ -75,13 +69,13 @@ class Stixel:
                  position_class: StixelClass,
                  image_size: Dict[str, int],
                  grid_step: int = 8):
-        self.column = top_point['proj_x']
-        self.top_row = top_point['proj_y']
-        self.bottom_row = bottom_point['proj_y']
+        self.column = top_point['u']
+        self.top_row = top_point['v']
+        self.bottom_row = bottom_point['v']
         self.position_class: StixelClass = position_class
         self.top_point = top_point
         self.bottom_point = bottom_point
-        self.depth = self.calculate_depth(top_point)
+        self.depth = top_point['w']
         self.image_size = image_size
         self.grid_step = grid_step
         self.sem_seg = top_point['sem_seg']

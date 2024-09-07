@@ -127,7 +127,7 @@ def cart_2_sph(point: np.array):
     el = np.arctan2(z, hxy)
     az = np.arctan2(y, x)
     point_sph = np.array(
-        (r, az, el, point['proj_x'], point['proj_y'], point['sem_seg']),
+        (r, az, el, point['u'], point['v'], point['w'], point['sem_seg']),
         dtype=point_dtype_sph
     )
     return point_sph
@@ -140,7 +140,7 @@ def sph_2_cart(point: np.array):
     y = r_cos_theta * np.sin(az)
     z = r * np.sin(el)
     point_cart = np.array(
-        (x, y, z, point['proj_x'], point['proj_y'], point['sem_seg']),
+        (x, y, z, point['u'], point['v'], point['w'], point['sem_seg']),
         dtype=point_dtype
     )
     return point_cart
@@ -166,28 +166,16 @@ class BottomPointCalculator:
         new_bottom_z = (m * bottom_point_range + b)
         bottom_point['z'] = new_bottom_z
         x_proj, y_proj = self.project_point_into_image(bottom_point)
-        # assert x_proj == top_point['proj_x']
-        bottom_point['proj_y'] = y_proj - self.los_offset
+        # assert x_proj == top_point['u']
+        bottom_point['v'] = y_proj - self.los_offset
         return bottom_point
 
     def calculate_bottom_stixel_to_reference_height(self, top_point: np.array) -> np.array:
         bottom_point = top_point.copy()
         bottom_point['z'] = top_point['z_ref']
         x_proj, y_proj = self.project_point_into_image(bottom_point)
-        # assert x_proj == top_point['proj_x']
-        if self.apply_gnd_offset:
-            m = -0.25
-            b = 15
-            range = np.sqrt(bottom_point['x'] ** 2 + bottom_point['y'] ** 2)
-            offset = int(m * range + b)
-            print(f'applied gnd offset: {offset}')
-            if offset < 0:
-                offset = 0
-            if y_proj - offset > 0:
-                y_proj -= offset
-            else:
-                y_proj = 0
-        bottom_point['proj_y'] = y_proj
+        # assert x_proj == top_point['u']
+        bottom_point['v'] = y_proj
         return bottom_point
 
     def project_point_into_image(self, point: np.ndarray) -> Tuple[int, int]:

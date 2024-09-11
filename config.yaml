@@ -9,10 +9,10 @@ phases:
 data_path: /home/marcel/workspace/datasets
 raw_data_path: /media/marcel/Data1/Raw
 exploring:
-  idx: 3
-  frame_num: 15
-  col: 21
-explore_data_deep: False
+  idx: null #165
+  frame_num: -1
+  col: 234
+explore_data_deep: True
 grid_step: 8
 dataset: waymo    # waymo, kitti, kitti-360
 generator: bbox   # bbox, semantic, default

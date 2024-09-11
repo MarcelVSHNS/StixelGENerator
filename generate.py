@@ -6,7 +6,7 @@ from PIL import Image
 import pandas as pd
 from typing import List
 from datetime import datetime
-from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model, filter_points_by_label, filter_points_by_semantic
+from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model, filter_points_by_label, filter_points_by_semantic, group_points_by_angle, calculate_plane_from_bbox
 
 # open Config
 with open('config.yaml') as yaml_file:
@@ -26,7 +26,7 @@ def main():
     organised by drive.
     """
     # config['phases']      'validation', 'testing', 'training'
-    for config_phase in ['validation', 'training']:
+    for config_phase in ['validation']:
         phase = config_phase
         with open(f"failures_{phase}.txt", "w") as file:
             file.write("Record names by phase, which failed to open: \n")
@@ -79,7 +79,7 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
                 if config['generator'] == 'default':
                     lidar_pts, plane_model = default_generator(frame, dataloader)
                 elif config['generator'] == 'bbox':
-                    lidar_pts, plane_model = bbox_generator(frame, dataloader)
+                    lidar_pts, bbox_ids = bbox_generator(frame, dataloader)
                 elif config['generator'] == 'semantic':
                     lidar_pts, plane_model = semantic_filtering_generator(frame, dataloader)
                 else:
@@ -87,15 +87,23 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
                 # camera is direct under lidar, no los
                 stixel_gen = StixelGenerator(camera_info=frame.camera_info,
                                              img_size=dataloader.img_size,
-                                             plane_model=plane_model,
                                              stixel_width=config['grid_step'],
                                              stixel_param=dataloader.config['stixel_cluster'],
                                              angle_param=dataloader.config['group_angle'])
-                stixel_list = stixel_gen.generate_stixel(lidar_pts)
+                # stixel_list = stixel_gen.generate_stixel(lidar_pts)
+                stixel_list = []
+                for idx in bbox_ids:
+                    for bbox in frame.laser_labels:
+                        if bbox.id == idx:
+                            plane = calculate_plane_from_bbox(bbox)
+                            stixel_gen.plane_model = plane
+                            bbox_points = lidar_pts[lidar_pts['id'] == idx]
+                            stixel_list.append(stixel_gen.generate_stixel(bbox_points))
+                stixel = [item for sublist in stixel_list for item in sublist]
                 # Export a single Stixel Wold representation and the relative images
                 _export_single_dataset(image_left=frame.image,
                                        image_right=frame.image_right if dataloader.stereo_available else None,
-                                       stixels=stixel_list,
+                                       stixels=stixel,
                                        dataset_name=dataloader.name,
                                        name=f"{frame.name}",
                                        export_phase=phase)
@@ -145,8 +153,11 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
                             int(stixel.bottom_row),
                             round(stixel.depth, 2),
                             int(stixel.sem_seg)])
-    target: pd.DataFrame = pd.DataFrame(target_list)
-    target.columns = ['img', 'u', 'vT', 'vB', 'd', 'label']
+    # create a list in any way, e.g. if there is no stixel in the image
+    if len(target_list) != 0:
+        target = pd.DataFrame(target_list, columns=['img', 'u', 'vT', 'vB', 'd', 'label'])
+    else:
+        target = pd.DataFrame(columns=['img', 'u', 'vT', 'vB', 'd', 'label'])
     # save .csv
     target.to_csv(os.path.join(label_path, name+".csv"), index=False)
 
@@ -176,15 +187,15 @@ def default_generator(frame, dataloader) -> np.array:
 
 
 def bbox_generator(frame, dataloader):
-    pts_filter_bbox = filter_points_by_label(points=frame.points,
-                                             bboxes=frame.laser_labels)
-    lp_without_ground, ground_model = remove_ground(points=frame.points,
+    angled_pts = group_points_by_angle(points=frame.points, param=dataloader.config['group_angle'],
+                                       camera_info=frame.camera_info)
+    lp_without_ground, _ = remove_ground(points=angled_pts,
                                                     param=dataloader.config['rm_gnd'])
+    pts_filter_bbox, bbox_ids = filter_points_by_label(points=lp_without_ground,
+                                                       bboxes=frame.laser_labels)
     pts_filter_bbox = remove_far_points(points=pts_filter_bbox,
                                         param=dataloader.config['rm_far_pts'])
-    pts_filter_bbox = remove_pts_below_plane_model(points=pts_filter_bbox,
-                                                   plane_model=ground_model)
-    return pts_filter_bbox, ground_model
+    return pts_filter_bbox, bbox_ids
 
 
 def semantic_filtering_generator(frame, dataloader):

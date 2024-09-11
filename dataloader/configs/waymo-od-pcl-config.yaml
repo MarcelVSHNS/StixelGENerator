@@ -1,5 +1,5 @@
 rm_gnd:
-  z_max: 0.84
+  z_max: 0.63
   distance_threshold: 0.24
   ransac_n: 3
   num_iterations: 10000
@@ -12,7 +12,7 @@ rm_los:
 rm_far_pts:
   range_threshold: 75.0
 group_angle:
-  total_num_angles: 2650
+  total_num_angles: 2800
 stixel_cluster:
   min_samples: 2
   cluster_eps: 100

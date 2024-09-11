@@ -67,10 +67,19 @@ def get_color_from_depth(depth, min_depth, max_depth):
     return tuple(int(c * 255) for c in color)
 
 
-def draw_stixels_on_image(image, stixels: List[Stixel], stixel_width=8, alpha=0.2):
+def draw_stixels_on_image(image, stixels: List[Stixel], stixel_width=8, alpha=0.2, draw_grid=False):
     depths = [stixel.depth for stixel in stixels]
     stixels.sort(key=lambda x: x.depth, reverse=True)
     min_depth, max_depth = min(depths), max(depths)
+    if draw_grid:
+        overlay = image.copy()
+        grid_color = (200, 200, 200)  # Hellgraue Farbe (R=200, G=200, B=200)
+        grid_alpha = 0.3  # Alpha für das Grid
+        for x in range(0, image.shape[1], stixel_width):
+            cv2.line(overlay, (x, 0), (x, image.shape[0]), grid_color, 1)
+        # Füge das Grid-Overlay mit Alpha zum Bild hinzu
+        cv2.addWeighted(overlay, grid_alpha, image, 1 - grid_alpha, 0, image)
+
     for stixel in stixels:
         top_left_x, top_left_y = stixel.column, stixel.top_row
         bottom_left_x, bottom_left_y = stixel.column, stixel.bottom_row
@@ -83,13 +92,15 @@ def draw_stixels_on_image(image, stixels: List[Stixel], stixel_width=8, alpha=0.
     return Image.fromarray(image)
 
 
-def draw_points_on_image(image, points, y_offset=0, coloring_sem: Optional[Dict[str, Tuple]] = None):
+def draw_points_on_image(image, points, y_offset=0, coloring_sem: Optional[Dict[str, Tuple]] = None, color_by_angle=False):
     # distances = [calculate_distance(point) for point in points]
     max_distance = max(points['w'])
     cmap = plt.get_cmap('viridis')
     for point in points:
         if coloring_sem is not None:
             color = coloring_sem[point['sem_seg']]
+        if color_by_angle:
+            color = colors[point['angle'] % len(colors)]
         else:
             normalized_distance = point['w'] / max_distance
             color = cmap(normalized_distance)[:3]

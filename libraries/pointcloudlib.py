@@ -1,17 +1,51 @@
 import open3d as o3d
 import numpy as np
 from sklearn.cluster import DBSCAN, KMeans
-from typing import List, Dict
-from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass
+from typing import List, Dict, Optional
+from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass, point_dtype_bbox_angle
 import yaml
 from scipy.spatial import distance
 from libraries.helper import BottomPointCalculator, cart_2_sph, sph_2_cart
 from libraries import Stixel
 import pandas as pd
 from dataloader import CameraInfo
+import pypatchworkpp
+
 
 with open('libraries/pcl-config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
+
+
+def segment_ground(points, mask, projection):
+    # https://github.com/url-kaist/patchwork-plusplus/blob/master/python/examples/demo_visualize.py
+    # Patchwork++ initialization
+    params = pypatchworkpp.Parameters()
+    params.sensor_height = 1.85
+    params.verbose = True
+    PatchworkPLUSPLUS = pypatchworkpp.patchworkpp(params)
+    # Load point cloud
+    # Estimate Ground
+    PatchworkPLUSPLUS.estimateGround(points)
+    ground = PatchworkPLUSPLUS.getGround()
+    non_ground_idx = PatchworkPLUSPLUS.getNongroundIndices()
+    mask_non_gnd = np.zeros(points.shape[0], dtype=bool)
+    mask_non_gnd[non_ground_idx] = True
+    combined_mask = mask.numpy() & mask_non_gnd
+    laser_points_view = points[combined_mask]
+    projection_view = projection.numpy()[combined_mask]
+    ground_o3d = o3d.geometry.PointCloud()
+    ground_o3d.points = o3d.utility.Vector3dVector(ground)
+
+    #o3d.visualization.draw_geometries([pcd])
+    ground_o3d.estimate_normals()
+    ground_o3d.orient_normals_consistent_tangent_plane(30)
+    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ground_o3d)
+    # Mesh visualisieren
+    o3d.visualization.draw_geometries([mesh, ground_o3d])
+    array = np.full(laser_points_view.shape[0], 20)
+    array = array[:, np.newaxis]
+    combined_data = np.hstack((laser_points_view, projection_view[..., 1:3], array))
+    return np.array([tuple(row) for row in combined_data], dtype=point_dtype_old)
 
 
 def remove_ground(points: np.array,
@@ -26,9 +60,7 @@ def remove_ground(points: np.array,
         plane_model: A tuple containing the parameters of the detected ground plane.
     """
     # TODO: add multiple planes (2x)
-    pcd = o3d.geometry.PointCloud()
     xyz = np.vstack((points['x'], points['y'], points['z'])).T
-    pcd.points = o3d.utility.Vector3dVector(xyz)
     z_filter = (xyz[:, 2] <= param['z_max'])
     filtered_xyz = xyz[z_filter]
     filtered_pcd = o3d.geometry.PointCloud()
@@ -94,13 +126,14 @@ def filter_points_by_label(points: np.array, bboxes) -> np.array:
     Returns:
     Filtered LiDAR points that lie within any of the given bounding boxes.
     """
-    filtered_points = []
     mask = np.zeros(len(points), dtype=bool)
-    for box in bboxes:
+    box_ids = np.full(len(points), "None", dtype=np.dtype('U25'))
+    box_classes = np.full(len(points), 0, dtype=np.int32)
+    for bbox in bboxes:
         # Extract box parameters
-        cx, cy, cz = box.box.center_x, box.box.center_y, box.box.center_z
-        length, width, height = box.box.length, box.box.width, box.box.height
-        heading = box.box.heading
+        cx, cy, cz = bbox.box.center_x, bbox.box.center_y, bbox.box.center_z
+        length, width, height = bbox.box.length, bbox.box.width, bbox.box.height
+        heading = bbox.box.heading
 
         # Compute rotation matrix around the Z axis (heading)
         cos_h = np.cos(heading)
@@ -128,11 +161,81 @@ def filter_points_by_label(points: np.array, bboxes) -> np.array:
                 (aligned_points[:, 2] >= -height / 2) & (aligned_points[:, 2] <= height / 2)
         )
 
-        # Update mask: any point within any box should be marked as True
+        # any point within any box should be marked as True
         mask |= in_box
+        box_ids[in_box] = bbox.id
+        box_classes[in_box] = bbox.type
 
         # Return only the points that fall inside any of the bounding boxes
-    return points[mask]
+    id_dtype = np.dtype([('id', np.str_, 25)])
+    bbox_ids = np.array(box_ids, dtype=id_dtype)
+    points['sem_seg'] = box_classes
+    points_with_bbox = np.empty(len(points), dtype=point_dtype_bbox_angle)
+
+    points_with_bbox['x'] = points['x']
+    points_with_bbox['y'] = points['y']
+    points_with_bbox['z'] = points['z']
+    points_with_bbox['u'] = points['u']
+    points_with_bbox['v'] = points['v']
+    points_with_bbox['w'] = points['w']
+    points_with_bbox['sem_seg'] = points['sem_seg']
+    points_with_bbox['angle'] = points['angle']
+    points_with_bbox['id'] = bbox_ids
+    points = points_with_bbox[mask]
+    return points, np.unique(points['id'])
+
+
+def calculate_plane_from_bbox(bbox):
+    center_x, center_y, center_z = bbox.box.center_x, bbox.box.center_y, bbox.box.center_z
+    length, width, height = bbox.box.length, bbox.box.width, bbox.box.height
+    heading = bbox.box.heading
+
+    # Berechne die Eckpunkte der unteren Fläche (im lokalen Koordinatensystem ohne Rotation)
+    half_length = length / 2
+    half_width = width / 2
+    half_height = height / 2
+
+    corners = np.array([
+        [-half_length, -half_width, -half_height],
+        [half_length, -half_width, -half_height],
+        [half_length, half_width, -half_height],
+        [-half_length, half_width, -half_height]
+    ])
+
+    # Rotationsmatrix um die Z-Achse (Heading)
+    cos_h = np.cos(heading)
+    sin_h = np.sin(heading)
+    rotation_matrix = np.array([
+        [cos_h, -sin_h, 0],
+        [sin_h, cos_h, 0],
+        [0, 0, 1]
+    ])
+
+    # Wende die Rotation an
+    rotated_corners = np.dot(corners, rotation_matrix.T)
+
+    # Verschiebe die Eckpunkte zum tatsächlichen Zentrum der Box
+    translated_corners = rotated_corners + np.array([center_x, center_y, center_z])
+
+    # Wähle drei Eckpunkte für die Berechnung der Ebenengleichung
+    P1 = translated_corners[0]
+    P2 = translated_corners[1]
+    P3 = translated_corners[2]
+
+    # Berechne die Vektoren P2 - P1 und P3 - P1
+    v1 = P2 - P1
+    v2 = P3 - P1
+
+    # Kreuzprodukt der beiden Vektoren ergibt den Normalenvektor der Ebene
+    normal_vector = np.cross(v1, v2)
+
+    # Die Koeffizienten a, b, c der Ebenengleichung ax + by + cz + d = 0
+    a, b, c = normal_vector
+
+    # Berechne d, indem wir einen Punkt (z.B. P1) in die Ebenengleichung einsetzen
+    d = -np.dot(normal_vector, P1)
+
+    return a, b, c, d
 
 
 def remove_far_points(points: np.array, param: Dict[str, float]) -> np.array:
@@ -209,10 +312,18 @@ def group_points_by_angle(points: np.array,
     df = pd.DataFrame(sorted_azimuth_angles.reshape(-1, 1), columns=['azimuth'])
     min = df['azimuth'].min()
     max = df['azimuth'].max()
-    num_groups = int(param['total_num_angles'] / (2 * np.pi) * abs(min - max))
+    num_groups = int((param['total_num_angles']) / (2 * np.pi) * abs(min - max))
     bins = np.linspace(min, max, num_groups + 1)
     df['cluster'], _cluster = pd.cut(df['azimuth'], bins=bins, labels=False, retbins=True)
     labels = df['cluster'].to_numpy()
+    pts_w_angles = []
+    for pt, angle in zip(sorted_points, labels):
+        x, y, z, u, v, w, sem_seg = pt
+        if np.isnan(angle):
+            angle = -1
+        pts_w_angles.append(np.array(tuple([x, y, z, u, v, w, sem_seg, "idx", angle]), dtype=point_dtype_bbox_angle))
+    pts_w_angles = np.array(pts_w_angles)
+    return pts_w_angles
     interval_means = [(_cluster[i] + _cluster[i + 1]) / 2 for i in range(len(_cluster) - 1)]
     # Group points based on labels and compute average angles
     # create a list for every found cluster, if you found not matched points subtract 1
@@ -364,7 +475,11 @@ class Scanline:
         self.plane_model = plane_model
         self.bottom_pt_calc = BottomPointCalculator(cam_info=self.camera_info)
         self.image_size = image_size
-        self.points: np.array = np.array(points, dtype=point_dtype)
+        pts = []
+        for pt in points[1]:
+            x, y, z, u, v, w, sem_seg, idx, angle = pt
+            pts.append(np.array(tuple([x, y, z, u, v, w, sem_seg]), dtype=point_dtype))
+        self.points: np.array = np.array(pts, dtype=point_dtype)
         self.objects: List[Cluster] = []
         self.last_cluster_top_stixel = None
         self.stixel_width = stixel_width
@@ -459,11 +574,11 @@ class StixelGenerator:
     def __init__(self,
                  camera_info: CameraInfo,
                  img_size: Dict[str, int],
-                 plane_model: np.array,
                  stixel_width: int,
                  stixel_param: Dict[str, int],
-                 angle_param: Dict[str, int]
-                 ):
+                 angle_param: Dict[str, int],
+                 plane_model: Optional[np.array] = None
+                 ) -> None:
         self.camera_info = camera_info
         self.plane_model = plane_model
         self.img_size = img_size
@@ -473,11 +588,18 @@ class StixelGenerator:
         self.angle_param = angle_param
 
     def generate_stixel(self, laser_points: np.array) -> List[Stixel]:
-        laser_points_by_angle = group_points_by_angle(laser_points, self.angle_param, self.camera_info)
+        assert self.plane_model is not None, "No plane model provided."
+        # laser_points_by_angle = group_points_by_angle(points=laser_points, param=self.angle_param, camera_info=self.camera_info)
+        angle_dict = {}
+        for pt in laser_points:
+            angle = pt['angle']
+            if angle not in angle_dict:
+                angle_dict[angle] = []
+            angle_dict[angle].append(pt)
         stixels = []
-        for angle_laser_points in laser_points_by_angle:
-            if len(angle_laser_points) != 0:
-                column = Scanline(angle_laser_points,
+        for pts_by_angle in angle_dict.items():
+            if len(pts_by_angle) != 0:
+                column = Scanline(pts_by_angle,
                                   camera_info=self.camera_info,
                                   plane_model=self.plane_model,
                                   image_size=self.img_size,

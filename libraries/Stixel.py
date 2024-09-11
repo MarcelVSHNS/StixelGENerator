@@ -13,6 +13,17 @@ point_dtype_sph = np.dtype([
     ('sem_seg', np.int32)
 ])
 
+point_dtype_bbox_angle = np.dtype([
+    ('x', np.float64),
+    ('y', np.float64),
+    ('z', np.float64),
+    ('u', np.int32),
+    ('v', np.int32),
+    ('w', np.float64),
+    ('sem_seg', np.int32),
+    ('id', np.dtype('U25')),
+    ('angle', np.int32)
+])
 
 point_dtype = np.dtype([
     ('x', np.float64),

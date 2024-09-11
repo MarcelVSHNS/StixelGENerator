@@ -248,19 +248,19 @@ class WaymoData(BaseData):
             range_image_top_pose)
         point_labels = convert_range_image_to_point_cloud_labels(
             frame, range_images, segmentation_labels)
-        laser_points = points[0]
+        self.all_points = points[0]
         laser_labels = point_labels[0]
-        laser_projection_points = tf.constant(cp_points[0], dtype=tf.int32)
+        self.laser_projection_points = tf.constant(cp_points[0], dtype=tf.int32)
         images = sorted(frame.images, key=lambda i: i.name)
-        mask = tf.equal(laser_projection_points[..., 0], images[cam_idx].name)
+        self.mask = tf.equal(self.laser_projection_points[..., 0], images[cam_idx].name)
         # transform points after slicing it from the mask into float values
-        laser_points_view = tf.gather_nd(laser_points, tf.where(mask)).numpy()
-        laser_labels_view = tf.gather_nd(laser_labels, tf.where(mask)).numpy()
+        laser_points_view = tf.gather_nd(self.all_points, tf.where(self.mask)).numpy()
+        laser_labels_view = tf.gather_nd(laser_labels, tf.where(self.mask)).numpy()
         # laser_camera_projections_view = tf.cast(tf.gather_nd(laser_projection_points, tf.where(mask)), dtype=tf.float32).numpy()
         # concatenated_laser_pts = np.column_stack((laser_points_view, laser_camera_projections_view[..., 1:3], laser_labels_view[..., 1:]))
         # self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)
-        projection = self._point_projection(laser_points_view)
-        combined_data = np.hstack((laser_points_view, projection, laser_labels_view[..., 1:]))
+        self.projection = self._point_projection(laser_points_view)
+        combined_data = np.hstack((laser_points_view, self.projection, laser_labels_view[..., 1:]))
         self.points = np.array([tuple(row) for row in combined_data], dtype=point_dtype)
 
     def _point_projection(self, points):

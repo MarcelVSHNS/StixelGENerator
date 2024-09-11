@@ -22,7 +22,7 @@ def main():
     """ 0.1 Use the plc-config file to make adjustments and customizations to your data. """
     dataset: Dataset = Dataset(data_dir=config['raw_data_path'],
                                phase=config['phase'],
-                               first_only=False)
+                               first_only=True)
     if config['exploring']['idx'] is not None:
         assert config["exploring"]["idx"] <= len(dataset)
         idx = config['exploring']['idx']
@@ -39,40 +39,44 @@ def main():
     # new_pts = sample.projection_test()
     # points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
     # points_on_img.show()
-
-    """ Semantic filtering 
-    pts_filter_sem_seg = filter_points_by_semantic(points=sample.points,
-                                                   param=dataset.config['semantic_filter'])
-    points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_sem_seg)
-    points_on_img.show()"""
-
-    """ Label filtering """
-    pts_filter_bbox = filter_points_by_label(points=sample.points,
-                                                bboxes=sample.laser_labels)
-    # points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_bbox)
+    # alt_non_gnd = segment_ground(sample.all_points, sample.mask, sample.laser_projection_points)
+    # points_on_img = draw_points_on_image(np.array(sample.image), alt_non_gnd)
     # points_on_img.show()
+
+    """ Semantic filtering """
+    #pts_filter_sem_seg = filter_points_by_semantic(points=sample.points,
+    #                                               param=dataset.config['semantic_filter'])
+    #points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_sem_seg, coloring_sem=waymo_laser_label_color)
+    #points_on_img.show()
 
     """ 1. Adjust the ground detection. Try to make it rough! the street should disappear every time! Repeat the same
      configuration (libraries/pcl-config.yaml) multiple times to proof your values. Try not to make it precise, the
      bottom point will be recalculated! higher values (distance_threshold) will make the road 'thicker'. The z_max 
      value masks all values above this value to avoid detecting large walls. """
-    lp_without_ground, ground_model = remove_ground(points=sample.points,
-                                                    param=dataset.config['rm_gnd'])
-    points_on_img = draw_points_on_image(np.array(sample.image), lp_without_ground)
-    points_on_img.show()
+    angled_pts = group_points_by_angle(points=sample.points, param=dataset.config['group_angle'],
+                                       camera_info=sample.camera_info)
+    # angled_img = draw_points_on_image(np.array(sample.image), angled_pts, color_by_angle=True)
+    # angled_img.show()
+    #lp_without_ground = sample.points
+    lp_without_ground, ground_model = remove_ground(points=angled_pts, param=dataset.config['rm_gnd'])
+    # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_ground)
+    # points_on_img.show()
+
+    """ Label filtering """
+    pts_filter_bbox, bbox_ids = filter_points_by_label(points=lp_without_ground, bboxes=sample.laser_labels)
+    # points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_bbox)
+    # points_on_img.show()
 
     # 1.1 Self explained: adjust the maximum distance of points, be aware that possibly no points exist in the scene
     # if this value is too low
-    pts_filter_bbox = remove_far_points(points=pts_filter_bbox,
-                                           param=dataset.config['rm_far_pts'])
+    pts_filter_bbox = remove_far_points(points=pts_filter_bbox, param=dataset.config['rm_far_pts'])
     # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_far_pts)
     # points_on_img.show()
 
     # 1.2 Measurement point below the road, do they exist??? ... not anymore ;)
-    #pts_filter_bbox = remove_pts_below_plane_model(points=pts_filter_bbox,
-    #                                                        plane_model=ground_model)
-    #points_on_img = draw_points_on_image(np.array(sample.image), pts_filter_bbox)
-    #points_on_img.show()
+    # lp_without_ground = remove_pts_below_plane_model(points=lp_without_ground, plane_model=ground_model)
+    # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_ground)
+    # points_on_img.show()
 
     """ 2. Depending on your vehicle setup (extrinsic calibration from lidar to camera), the lidar might see areas, 
     which the camera does not - normally because of the lifted viewing angle of the top lidar. This function helps to 
@@ -88,13 +92,12 @@ def main():
     The visualization shows groups in different colors. You should set the eps to a value which divide every close
     point into one group; more far away points can be clustered with more than one scanline but in general there should
     be scan lines in direction of elevation for every angle."""
-    angled_pts = group_points_by_angle(points=pts_filter_bbox,
-                                       param=dataset.config['group_angle'],
-                                       camera_info=sample.camera_info)
-    # angled_img = draw_clustered_points_on_image(np.array(sample.image), angled_pts, depth_coloring=False)
+    # angled_pts = group_points_by_angle(points=pts_filter_bbox, param=dataset.config['group_angle'], camera_info=sample.camera_info)
+    # angled_img = draw_points_on_image(np.array(sample.image), angled_pts, color_by_angle=True)
     # angled_img.show()
+    """ explore deep 
     if config['explore_data_deep']:
-        print(f"From right to left with {len(angled_pts)} angeles.")
+        print(f'From right to left with {len(angled_pts)} angeles.')
         if len(angled_pts[config['exploring']['col']]) != 0:
             column = Scanline(angled_pts[config['exploring']['col']],
                               camera_info=sample.camera_info,
@@ -102,26 +105,38 @@ def main():
                               image_size=dataset.img_size,
                               stixel_width=8,
                               param=dataset.config['stixel_cluster'])
-            obj_scanline_on_img = draw_obj_points_on_image(np.array(sample.image), column.objects,
-                                                           column.get_stixels())
+            objects = column.objects
+            stixel = column.get_stixels()
+            obj_scanline_on_img = draw_obj_points_on_image(np.array(sample.image), objects=objects, stixels=stixel)
             obj_scanline_on_img.show()
-            draw_obj_points_2d(column.objects, column.get_stixels())
+            draw_obj_points_2d(objects, stixel)
+            print("ende")
         else:
-            print(f"No points in that col({config['exploring']['col']}) found.")
+            print(f"No points in that col({config['exploring']['col']}) found.")"""
 
     """ 4. Check the result or go into details. You should receive a nice looking, coloured representation of stixels. 
     use scanline_cluster_obj params to adjust the vertical clustering (..._factor). x_threshold is the minimum distance 
     of a top point to be part of the current object or create a new stixel. """
     stixel_gen = StixelGenerator(camera_info=sample.camera_info,
                                  img_size=dataset.img_size,
-                                 plane_model=ground_model,
                                  stixel_width=8,
                                  stixel_param=dataset.config['stixel_cluster'],
                                  angle_param=dataset.config['group_angle'])
-    stixel_list = stixel_gen.generate_stixel(pts_filter_bbox)
-    gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel_list, stixel_width=config['grid_step'])
+    stixel_list = []
+    for id in bbox_ids:
+        for bbox in sample.laser_labels:
+            if bbox.id == id:
+                plane = calculate_plane_from_bbox(bbox)
+                stixel_gen.plane_model = plane
+                bbox_points = pts_filter_bbox[pts_filter_bbox['id'] == id]
+                # points_on_img = draw_points_on_image(np.array(sample.image), bbox_points, color_by_angle=True)
+                # points_on_img.show()
+                stixel_list.append(stixel_gen.generate_stixel(bbox_points))
+    stixel = [item for sublist in stixel_list for item in sublist]
+    gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel, stixel_width=config['grid_step'], draw_grid=True)
     gt_stixel_img.show()
 
+    """
     stx_pts = []
     for stx in stixel_list:
         stx_pts.append(stx.top_point)
@@ -190,7 +205,7 @@ def main():
 
     # Visualise point cloud
     o3d.visualization.draw_geometries([pcd] + bounding_boxes)
-
+    """
 
 
 if __name__ == "__main__":

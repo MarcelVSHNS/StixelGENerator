@@ -50,6 +50,7 @@ class CameraInfo:
         self.R = rect_mtx
         self.extrinsic: Pose = Pose(xyz=self.T[:3, 3],
                                     rpy=self.calc_euler_angle_from_trans_mtx(self.T))
+        self.D = np.array([])
 
     @staticmethod
     def calc_euler_angle_from_trans_mtx(trans_mtx: np.array):

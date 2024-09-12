@@ -1,11 +1,15 @@
 import os
-
 import numpy as np
 import yaml
+import stixel as stx
 from PIL import Image
+import cv2
 import pandas as pd
 from typing import List
 from datetime import datetime
+
+from stixel.definition import StixelWorld
+
 from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, remove_pts_below_plane_model, filter_points_by_label, filter_points_by_semantic, group_points_by_angle, calculate_plane_from_bbox
 
 # open Config
@@ -101,11 +105,9 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
                             stixel_list.append(stixel_gen.generate_stixel(bbox_points))
                 stixel = [item for sublist in stixel_list for item in sublist]
                 # Export a single Stixel Wold representation and the relative images
-                _export_single_dataset(image_left=frame.image,
-                                       image_right=frame.image_right if dataloader.stereo_available else None,
-                                       stixels=stixel,
+                _export_single_dataset(stixels=stixel,
+                                       frame=frame,
                                        dataset_name=dataloader.name,
-                                       name=f"{frame.name}",
                                        export_phase=phase)
                 # print(f"Frame {frame_num + 1} from {len(data_chunk)} done.")
                 frame_num += 1
@@ -119,7 +121,7 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
         file.write(f"  . \n")
 
 
-def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, dataset_name: str, export_phase: str, image_right: Image = None):
+def _export_single_dataset(stixels: List[Stixel], frame: Data, dataset_name: str, export_phase: str):
     """
     Exports the Stixel World and cares for paths etc.
     Args:
@@ -134,32 +136,42 @@ def _export_single_dataset(image_left: Image, stixels: List[Stixel], name: str, 
     base_path = os.path.join(config['data_path'], dataset_name, export_phase)
     os.makedirs(base_path, exist_ok=True)
     left_img_path: str = os.path.join(base_path, "FRONT")
-    right_img_path: str = os.path.join(base_path, "STEREO_RIGHT")
     label_path = os.path.join(base_path, f"Stixel_{config['generator']}")
     os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
+    stxl_wrld = stx.StixelWorld()
+    stxl_wrld.context.name = frame.name
+    stxl_wrld.context.calibration.K.extend(frame.camera_info.K.flatten().tolist())
+    stxl_wrld.context.calibration.T.extend(frame.camera_info.T.flatten().tolist())
+    stxl_wrld.context.calibration.reference = "Vehicle2Camera"
+    stxl_wrld.context.calibration.K.extend(frame.camera_info.R.flatten().tolist())
+    stxl_wrld.context.calibration.K.extend(frame.camera_info.D.flatten().tolist())
+    stxl_wrld.context.calibration.DistortionModel = 0
+    stxl_wrld.context.calibration.img_name = f"{export_phase}/{frame.name}.png"
+    height, width, channels = np.array(frame.image).shape
+    stxl_wrld.context.calibration.width = height
+    stxl_wrld.context.calibration.height = width
+    stxl_wrld.context.calibration.height = channels
     # save images
-    if not os.path.isfile(os.path.join(left_img_path, name + ".png")):
-        image_left.save(os.path.join(left_img_path, name + ".png"))
-    if image_right is not None and export_phase == 'testing':
-        os.makedirs(right_img_path, exist_ok=True)
-        image_right.save(os.path.join(right_img_path, name + ".png"))
-    # create .csv
-    target_list = []
+    img = np.array(frame.image)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    success, img_encoded = cv2.imencode(".png", img)
+    stxl_wrld.image = img_encoded.tobytes()
+    # if image_right is not None and export_phase == 'testing':
+    #     os.makedirs(right_img_path, exist_ok=True)
+    #     image_right.save(os.path.join(right_img_path, name + ".png"))
+    # create .stx1
     for stixel in stixels:
-        target_list.append([f"{export_phase}/{name}.png",
-                            int(stixel.column),
-                            int(stixel.top_row),
-                            int(stixel.bottom_row),
-                            round(stixel.depth, 2),
-                            int(stixel.sem_seg)])
-    # create a list in any way, e.g. if there is no stixel in the image
-    if len(target_list) != 0:
-        target = pd.DataFrame(target_list, columns=['img', 'u', 'vT', 'vB', 'd', 'label'])
-    else:
-        target = pd.DataFrame(columns=['img', 'u', 'vT', 'vB', 'd', 'label'])
-    # save .csv
-    target.to_csv(os.path.join(label_path, name+".csv"), index=False)
+        stxl = stx.Stixel()
+        stxl.u = int(stixel.column)
+        stxl.vT = int(stixel.top_row)
+        stxl.vB = int(stixel.bottom_row)
+        stxl.d = round(stixel.depth, 3)
+        stxl.label = int(stixel.sem_seg)
+        stxl.width = 8
+        stxl.confidence = 1.0
+        stxl_wrld.stixel.append(stxl)
+    stx.save(stxl_wrld, label_path)
 
 
 def _chunks(lst, n) -> List[List[int]]:

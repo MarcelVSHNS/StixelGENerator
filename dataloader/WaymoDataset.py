@@ -213,6 +213,7 @@ class WaymoData(BaseData):
                                       trans_mtx=T,
                                       proj_mtx=P,
                                       rect_mtx=np.eye(4))
+        self.camera_info.D = np.array(front_cam_calib.intrinsic[4:])
         # Transformations
         self._point_slices(frame=tf_frame, cam_idx=self.cam_idx)  # Apply laser transformation
 

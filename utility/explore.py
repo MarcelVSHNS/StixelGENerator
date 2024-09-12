@@ -32,6 +32,7 @@ def main():
     drive = dataset[idx]
     assert config["exploring"]["frame_num"] <= len(drive), "Check 'first_only' option of the dataloader."
     sample: Data = drive[config["exploring"]["frame_num"]]
+    # TODO: explore 10203656353524179475_7625_000_7645_000_25_FRONT
 
     """ 0.2 Check out if your own camera-lidar projection works (camera calib data are not always and for everyone
      unique explained). It is necessary to calculate the correct bottom point of a finished Stixel. 

@@ -227,7 +227,8 @@ class WaymoData(BaseData):
         K_tmp = np.array([
             [f_u, 0, c_u, 0],
             [0, f_v, c_v, 0],
-            [0, 0, 1, 0]
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
         ])
         return K_tmp @ waymo_cam_RT
 

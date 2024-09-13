@@ -144,9 +144,9 @@ def _export_single_dataset(stixels: List[Stixel], frame: Data, dataset_name: str
     stxl_wrld.context.calibration.K.extend(frame.camera_info.K.flatten().tolist())
     stxl_wrld.context.calibration.T.extend(frame.camera_info.T.flatten().tolist())
     stxl_wrld.context.calibration.reference = "Vehicle2Camera"
-    stxl_wrld.context.calibration.K.extend(frame.camera_info.R.flatten().tolist())
-    stxl_wrld.context.calibration.K.extend(frame.camera_info.D.flatten().tolist())
-    stxl_wrld.context.calibration.DistortionModel = 0
+    stxl_wrld.context.calibration.R.extend(frame.camera_info.R.flatten().tolist())
+    stxl_wrld.context.calibration.D.extend(frame.camera_info.D.flatten().tolist())
+    stxl_wrld.context.calibration.DistortionModel = 1
     stxl_wrld.context.calibration.img_name = f"{export_phase}/{frame.name}.png"
     height, width, channels = np.array(frame.image).shape
     stxl_wrld.context.calibration.width = height

@@ -227,8 +227,7 @@ class WaymoData(BaseData):
         K_tmp = np.array([
             [f_u, 0, c_u, 0],
             [0, f_v, c_v, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
+            [0, 0, 1, 0]
         ])
         return K_tmp @ waymo_cam_RT
 
@@ -263,20 +262,22 @@ class WaymoData(BaseData):
         # self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)
         self.projection = self._point_projection(laser_points_view)
         combined_data = np.hstack((laser_points_view, self.projection, laser_labels_view[..., 1:]))
-        self.points = np.array([tuple(row) for row in combined_data], dtype=point_dtype)
+        # TODO: drop the waymo projection mask and use the projection (enables left and right image)
+        width, height = self.image.size
+        valid_indices = (
+                (combined_data[:, 3] >= 0) & (combined_data[:, 3] < width) &
+                (combined_data[:, 4] >= 0) & (combined_data[:, 4] < height)
+        )
+        valid_combined_data = combined_data[valid_indices]
+        self.points = np.array([tuple(row) for row in valid_combined_data], dtype=point_dtype)
 
     def _point_projection(self, points):
         lidar_pts = np.insert(points[:, 0:3], 3, 1, axis=1).T
         img_pts = self.camera_info.P.dot(self.camera_info.R.dot(self.camera_info.T.dot(lidar_pts)))
-        # K * T * pt
+
         img_pts[:2] /= img_pts[2, :]
         img_pts = img_pts.T
-        lidar_pts = lidar_pts.T
-        projection_list = np.array(img_pts)
-        # pts_coordinates = np.array(lidar_pts[:, 0:3])
-        # combined_data = np.hstack((pts_coordinates, projection_list))
-        # return np.array([tuple(row) for row in combined_data], dtype=point_dtype)
-        return projection_list
+        return img_pts
 
     def inverse_projection(self, points):
         img_pts = np.vstack((points['u'], points['v'], points['w'])).T

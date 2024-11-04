@@ -1,3 +1,8 @@
+"""
+TODO: check U column range (found -1 as u)
+"""
+
+
 import os
 import numpy as np
 import yaml
@@ -30,7 +35,7 @@ def main():
     organised by drive.
     """
     # config['phases']      'validation', 'testing', 'training'
-    for config_phase in ['validation']:
+    for config_phase in ['training', 'validation']:
         phase = config_phase
         with open(f"failures_{phase}.txt", "w") as file:
             file.write("Record names by phase, which failed to open: \n")
@@ -74,7 +79,8 @@ def _generate_data_from_record_chunk(index_list: List[int], dataloader: Dataset,
         frame_num: int = 0
         try:
             data_chunk: List[Data] = dataloader[index]
-        except:
+        except Exception as e:
+            print(e)
             continue
         if data_chunk is None:
             break
@@ -135,9 +141,9 @@ def _export_single_dataset(stixels: List[Stixel], frame: Data, dataset_name: str
     # define paths
     base_path = os.path.join(config['data_path'], dataset_name, export_phase)
     os.makedirs(base_path, exist_ok=True)
-    left_img_path: str = os.path.join(base_path, "FRONT")
+    # left_img_path: str = os.path.join(base_path, "FRONT")
     label_path = os.path.join(base_path, f"Stixel_{config['generator']}")
-    os.makedirs(left_img_path, exist_ok=True)
+    # os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     stxl_wrld = stx.StixelWorld()
     stxl_wrld.context.name = frame.name
@@ -147,11 +153,11 @@ def _export_single_dataset(stixels: List[Stixel], frame: Data, dataset_name: str
     stxl_wrld.context.calibration.R.extend(frame.camera_info.R.flatten().tolist())
     stxl_wrld.context.calibration.D.extend(frame.camera_info.D.flatten().tolist())
     stxl_wrld.context.calibration.DistortionModel = 1
-    stxl_wrld.context.calibration.img_name = f"{export_phase}/{frame.name}.png"
+    stxl_wrld.context.calibration.img_name = f"{frame.name}.png"
     height, width, channels = np.array(frame.image).shape
-    stxl_wrld.context.calibration.width = height
-    stxl_wrld.context.calibration.height = width
-    stxl_wrld.context.calibration.height = channels
+    stxl_wrld.context.calibration.width = width
+    stxl_wrld.context.calibration.height = height
+    stxl_wrld.context.calibration.channels = channels
     # save images
     img = np.array(frame.image)
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)

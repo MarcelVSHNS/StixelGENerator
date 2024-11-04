@@ -1,0 +1,3 @@
+Record names by phase, which failed to open: 
+gsutil -m cp \ 
+  . 

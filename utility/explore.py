@@ -38,8 +38,8 @@ def main():
      unique explained). It is necessary to calculate the correct bottom point of a finished Stixel. 
      coloring_sem=waymo_laser_label_color """
     # new_pts = sample.projection_test()
-    # points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
-    # points_on_img.show()
+    points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
+    points_on_img.show()
     # alt_non_gnd = segment_ground(sample.all_points, sample.mask, sample.laser_projection_points)
     # points_on_img = draw_points_on_image(np.array(sample.image), alt_non_gnd)
     # points_on_img.show()

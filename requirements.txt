@@ -8,6 +8,5 @@ open3d
 scikit-learn
 scipy
 pykitti
-tensorflow-cpu==2.12.0
 waymo-open-dataset-tf-2-12-0
 kitti360scripts

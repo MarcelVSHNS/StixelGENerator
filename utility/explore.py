@@ -1,10 +1,12 @@
 from dataloader import WaymoDataLoader as Dataset
+from dataloader.WaymoDataset import show_projected_camera_synced_boxes
 from libraries import *
 import open3d as o3d
 import numpy as np
 import yaml
 import random
 from libraries.Stixel import point_dtype_ext
+
 
 with open('config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
@@ -30,17 +32,20 @@ def main():
         idx = random.randint(0, len(dataset) - 1)
         print(f"Random index: {idx}")
     drive = dataset[idx]
+    print(len(drive))
     assert config["exploring"]["frame_num"] <= len(drive), "Check 'first_only' option of the dataloader."
     sample: Data = drive[config["exploring"]["frame_num"]]
     # TODO: explore 10203656353524179475_7625_000_7645_000_25_FRONT
+    show_projected_camera_synced_boxes(sample.frame, sample.frame.images[0])
+
 
     """ 0.2 Check out if your own camera-lidar projection works (camera calib data are not always and for everyone
      unique explained). It is necessary to calculate the correct bottom point of a finished Stixel. 
      coloring_sem=waymo_laser_label_color """
     # new_pts = sample.projection_test()
-    points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
-    points_on_img.show()
-    # alt_non_gnd = segment_ground(sample.all_points, sample.mask, sample.laser_projection_points)
+    # points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
+    # points_on_img.show()
+    alt_non_gnd = segment_ground(sample.all_points, sample.mask, sample.laser_projection_points)
     # points_on_img = draw_points_on_image(np.array(sample.image), alt_non_gnd)
     # points_on_img.show()
 
@@ -71,11 +76,12 @@ def main():
     # 1.1 Self explained: adjust the maximum distance of points, be aware that possibly no points exist in the scene
     # if this value is too low
     pts_filter_bbox = remove_far_points(points=pts_filter_bbox, param=dataset.config['rm_far_pts'])
+    lp_without_ground = remove_far_points(points=lp_without_ground, param=dataset.config['rm_far_pts'])
     # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_far_pts)
     # points_on_img.show()
 
     # 1.2 Measurement point below the road, do they exist??? ... not anymore ;)
-    # lp_without_ground = remove_pts_below_plane_model(points=lp_without_ground, plane_model=ground_model)
+    lp_without_ground = remove_pts_below_plane_model(points=lp_without_ground, plane_model=ground_model)
     # points_on_img = draw_points_on_image(np.array(sample.image), lp_without_ground)
     # points_on_img.show()
 
@@ -134,9 +140,14 @@ def main():
                 # points_on_img.show()
                 stixel_list.append(stixel_gen.generate_stixel(bbox_points))
     stixel = [item for sublist in stixel_list for item in sublist]
-    gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel, stixel_width=config['grid_step'], draw_grid=True)
-    gt_stixel_img.show()
-
+    gt_stixel_img = draw_stixels_on_image(np.array(sample.image), stixel, stixel_width=config['grid_step'], draw_grid=False)
+    gt_stixel_img.save(f"images_docs/{sample.frame.context.name}_stixel.jpg")
+    sample.image.save(f"images_docs/{sample.frame.context.name}_{idx}_image.jpg")
+    # gt_stixel_img.show()
+    full_stx = stixel_gen.generate_stixel(lp_without_ground)
+    full_stx_img = draw_stixels_on_image(np.array(sample.image), full_stx, stixel_width=config['grid_step'], draw_grid=False)
+    full_stx_img.show()
+    full_stx_img.save(f"images_docs/{sample.frame.context.name}_stixel_full.jpg")
     """
     stx_pts = []
     for stx in stixel_list:

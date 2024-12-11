@@ -1,4 +1,4 @@
-phase: validation
+phase: training
 # testing
 # training
 # validation
@@ -7,10 +7,10 @@ phases:
   - validation
   - testing
 data_path: /home/marcel/workspace/datasets
-raw_data_path: /media/marcel/Data1/Raw
+raw_data_path: /home/marcel/workspace/datasets/raw/
 exploring:
-  idx: null #165
-  frame_num: -1
+  idx: 377 #165, 377
+  frame_num: 1  #0, 1
   col: 234
 explore_data_deep: True
 grid_step: 8

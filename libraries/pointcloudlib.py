@@ -2,7 +2,7 @@ import open3d as o3d
 import numpy as np
 from sklearn.cluster import DBSCAN, KMeans
 from typing import List, Dict, Optional
-from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass, point_dtype_bbox_angle
+from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass, point_dtype_bbox_angle, point_dtype_old
 import yaml
 from scipy.spatial import distance
 from libraries.helper import BottomPointCalculator, cart_2_sph, sph_2_cart
@@ -10,7 +10,6 @@ from libraries import Stixel
 import pandas as pd
 from dataloader import CameraInfo
 import pypatchworkpp
-
 
 with open('libraries/pcl-config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
@@ -281,7 +280,7 @@ def remove_pts_below_plane_model(points: np.array, plane_model) -> np.array:
     a, b, c, d = plane_model
     filtered_points = []
     for point in points:
-        x, y, z, u, v, w, sem_seg = point
+        x, y, z, u, v, w, sem_seg, angle, id = point
         if a * x + b * y + c * z + d >= 0:
             filtered_points.append(point)
     return np.array(filtered_points)
@@ -416,7 +415,7 @@ class Cluster:
     def check_object_position(self):
         """ Detects if an object stands on the ground or not.
 
-        Returns:
+        Returns:segment_ground
 
         """
         self.sort_points_top_obj_stixel()

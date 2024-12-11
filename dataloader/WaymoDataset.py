@@ -13,15 +13,15 @@ from waymo_open_dataset.v2 import convert_range_image_to_point_cloud
 from waymo_open_dataset.wdl_limited.camera.ops import py_camera_model_ops
 from PIL import Image
 from libraries.Stixel import point_dtype
-#from libraries import draw_3d_wireframe_box, draw_2d_box
+from libraries import draw_3d_wireframe_box, draw_2d_box
 from dataloader import BaseData, CameraInfo
 
 
-def show_camera_image(camera_image, layout):
+def show_camera_image(camera_image, layout, title="FRONT"):
   """Display the given camera image."""
   ax = plt.subplot(*layout)
   plt.imshow(tf.image.decode_jpeg(camera_image.image))
-  plt.title(open_dataset.CameraName.Name.Name(camera_image.name))
+  plt.title(title)
   plt.grid(False)
   plt.axis('off')
   return ax
@@ -126,8 +126,8 @@ def project_vehicle_to_image(vehicle_pose, calibration, points):
                                             camera_image_metadata,
                                             world_points).numpy()
 
-"""
-def show_projected_camera_synced_boxes(frame, camera_image, ax, draw_3d_box=False):
+
+def show_projected_camera_synced_boxes(frame, camera_image):
   # Displays camera_synced_box 3D labels projected onto camera.
   FILTER_AVAILABLE = any(
       [label.num_top_lidar_points_in_box > 0 for label in frame.laser_labels])
@@ -140,6 +140,9 @@ def show_projected_camera_synced_boxes(frame, camera_image, ax, draw_3d_box=Fals
   # Fetch matching camera calibration.
   calibration = next(cc for cc in frame.context.camera_calibrations
                      if cc.name == camera_image.name)
+
+  plt.figure(figsize=(25, 20))
+  ax = show_camera_image(camera_image, (1, 1, 1), title=frame.context.name)
 
   for label in frame.laser_labels:
     box = label.camera_synced_box
@@ -177,15 +180,11 @@ def show_projected_camera_synced_boxes(frame, camera_image, ax, draw_3d_box=Fals
 
     if u.max() - u.min() == 0 or v.max() - v.min() == 0:
       continue
+    draw_3d_wireframe_box(ax, u, v, (1.0, 1.0, 0.0))
+  plt.savefig(f'images_docs/{frame.context.name}_bbox.jpg')
+  # plt.show()
 
-    if draw_3d_box:
-      # Draw approximate 3D wireframe box onto the image. Occlusions are not
-      # handled properly.
-      draw_3d_wireframe_box(ax, u, v, (1.0, 1.0, 0.0))
-    else:
-      # Draw projected 2D box onto the image.
-      draw_2d_box(ax, u, v, (1.0, 1.0, 0.0))
-"""
+
 
 class WaymoData(BaseData):
     def __init__(self, tf_frame, frame_num, cam_idx):

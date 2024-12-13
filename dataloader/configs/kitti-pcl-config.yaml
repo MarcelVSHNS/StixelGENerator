@@ -5,13 +5,14 @@ rm_gnd:
   num_iterations: 10000
 rm_los:
   disable: False
-  radius: 360000
+  radius: 80000
   x: 0.0
   y: 0.0
   z: 0.0
 rm_far_pts:
-  range_threshold: 50.0
+  range_threshold: 75.0
 group_angle:
+  total_num_angles: 2048
   min_angle: -0.72
   max_angle: 0.7
   num_groups: 156

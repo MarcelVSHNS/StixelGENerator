@@ -6,13 +6,13 @@ phases:
   - training
   - validation
   - testing
-data_path: /home/marcel/workspace/datasets
-raw_data_path: /home/marcel/workspace/datasets/raw/
+data_path: /mnt/workspace/datasets
+raw_data_path: /mnt/workspace/Raw
 exploring:
-  idx: 377 #165, 377
-  frame_num: 1  #0, 1
+  idx: null #165, 377 42, 29
+  frame_num: 0  #0, 1
   col: 234
 explore_data_deep: True
 grid_step: 8
-dataset: waymo    # waymo, kitti, kitti-360
-generator: bbox   # bbox, semantic, default
+dataset: kitti    # waymo, kitti, kitti-360
+generator: default   # bbox, semantic, default

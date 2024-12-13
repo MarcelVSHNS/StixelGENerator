@@ -2,7 +2,7 @@ import open3d as o3d
 import numpy as np
 from sklearn.cluster import DBSCAN, KMeans
 from typing import List, Dict, Optional
-from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass, point_dtype_bbox_angle, point_dtype_old
+from libraries.Stixel import point_dtype, point_dtype_ext, StixelClass, point_dtype_bbox_angle
 import yaml
 from scipy.spatial import distance
 from libraries.helper import BottomPointCalculator, cart_2_sph, sph_2_cart
@@ -15,36 +15,30 @@ with open('libraries/pcl-config.yaml') as yaml_file:
     config = yaml.load(yaml_file, Loader=yaml.FullLoader)
 
 
-def segment_ground(points, mask, projection):
+def segment_ground(points: np.array, show_pts: bool = False) -> np.array:
     # https://github.com/url-kaist/patchwork-plusplus/blob/master/python/examples/demo_visualize.py
     # Patchwork++ initialization
+    xyz = np.vstack((points['x'], points['y'], points['z'])).T
+    # xyz = points
     params = pypatchworkpp.Parameters()
-    params.sensor_height = 1.85
-    params.verbose = True
+    params.enable_RNR = False
     PatchworkPLUSPLUS = pypatchworkpp.patchworkpp(params)
     # Load point cloud
     # Estimate Ground
-    PatchworkPLUSPLUS.estimateGround(points)
+    PatchworkPLUSPLUS.estimateGround(xyz)
     ground = PatchworkPLUSPLUS.getGround()
     non_ground_idx = PatchworkPLUSPLUS.getNongroundIndices()
     mask_non_gnd = np.zeros(points.shape[0], dtype=bool)
     mask_non_gnd[non_ground_idx] = True
-    combined_mask = mask.numpy() & mask_non_gnd
-    laser_points_view = points[combined_mask]
-    projection_view = projection.numpy()[combined_mask]
-    ground_o3d = o3d.geometry.PointCloud()
-    ground_o3d.points = o3d.utility.Vector3dVector(ground)
-
-    #o3d.visualization.draw_geometries([pcd])
-    ground_o3d.estimate_normals()
-    ground_o3d.orient_normals_consistent_tangent_plane(30)
-    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(ground_o3d)
-    # Mesh visualisieren
-    o3d.visualization.draw_geometries([mesh, ground_o3d])
-    array = np.full(laser_points_view.shape[0], 20)
-    array = array[:, np.newaxis]
-    combined_data = np.hstack((laser_points_view, projection_view[..., 1:3], array))
-    return np.array([tuple(row) for row in combined_data], dtype=point_dtype_old)
+    if show_pts:
+        colors = np.zeros((xyz.shape[0], 3))
+        colors[~mask_non_gnd] = [0, 1, 0]  # Green for ground points
+        colors[mask_non_gnd] = [0.5, 0, 0]  # Dark red for non-ground points
+        point_cloud = o3d.geometry.PointCloud()
+        point_cloud.points = o3d.utility.Vector3dVector(xyz)
+        point_cloud.colors = o3d.utility.Vector3dVector(colors)
+        o3d.visualization.draw_geometries([point_cloud])
+    return points[mask_non_gnd]
 
 
 def remove_ground(points: np.array,
@@ -341,11 +335,14 @@ def group_points_by_angle(points: np.array,
                 pt_sph['az'] = cluster_mean
                 pt_cart = sph_2_cart(pt_sph)
                 u, v = btm_calc.project_point_into_image(pt_cart)
-                angle[i] = np.array(tuple([pt_cart['x'], pt_cart['y'], pt_cart['z'], u, v, point['w'], point['sem_seg']]), dtype=point_dtype)
+                angle[i] = np.array(
+                    tuple([pt_cart['x'], pt_cart['y'], pt_cart['z'], u, v, point['w'], point['sem_seg']]),
+                    dtype=point_dtype)
         else:
             for i, point in enumerate(angle):
-                angle[i] = np.array(tuple([point['x'], point['y'], point['z'], point['u'], point['v'], point['w'], point['sem_seg']]),
-                                    dtype=point_dtype)
+                angle[i] = np.array(
+                    tuple([point['x'], point['y'], point['z'], point['u'], point['v'], point['w'], point['sem_seg']]),
+                    dtype=point_dtype)
 
     return angle_cluster
 
@@ -366,12 +363,17 @@ class Cluster:
      point
     - check_object_position() -> bool: Checks if the cluster is standing on the ground
     """
-    def __init__(self, points: np.array, plane_model):
+
+    def __init__(self, points: np.array,
+                 plane_model: Optional[np.array] = None):
         self.plane_model = plane_model
         self.points: np.array = points
-        self.is_standing_on_ground = self.check_object_position()
+        if self.plane_model is None:
+            self.is_standing_on_ground = False
+        else:
+            self.is_standing_on_ground = self.check_object_position()
         if self.is_standing_on_ground:
-            self.points: np.array = self.assign_reference_z_to_points_from_ground(points)    # Shape: x, y, z, u, v, z_ref
+            self.points: np.array = self.assign_reference_z_to_points_from_ground(points)  # Shape: x, y, z, u, v, z_ref
         else:
             self.points: np.array = self.assign_reference_z_to_points_from_object_low(points)
         self.mean_range: float = self.calculate_mean_range()
@@ -395,7 +397,7 @@ class Cluster:
     def assign_reference_z_to_points_from_ground(self, points):
         referenced_points = np.empty(points.shape, dtype=point_dtype_ext)
         a, b, c, d = self.plane_model
-        #d -= 0.05
+        # d -= 0.05
         assert c != 0, "Dont divide by 0"
         for i, point in enumerate(points):
             x, y, z, u, v, w, sem_seg = point
@@ -422,7 +424,8 @@ class Cluster:
         cluster_point = self.points[-1]
         a, b, c, d = self.plane_model
         # calculate distance to plane
-        distance = abs(a * cluster_point['x'] + b * cluster_point['y'] + c * cluster_point['z'] + d) / np.sqrt(a ** 2 + b ** 2 + c ** 2)
+        distance = abs(a * cluster_point['x'] + b * cluster_point['y'] + c * cluster_point['z'] + d) / np.sqrt(
+            a ** 2 + b ** 2 + c ** 2)
         if distance <= config['cluster']['to_ground_detection_threshold']:
             return True
         else:
@@ -464,9 +467,10 @@ class Scanline:
         get_stixels(self) -> List[Stixel]:
             Returns a list of stixels found in the scanline.
     """
+
     def __init__(self, points: np.array,
                  camera_info: CameraInfo,
-                 plane_model: np.array,
+                 plane_model: Optional[np.array],
                  image_size: Dict[str, int],
                  stixel_width: int,
                  param: Dict[str, int]):
@@ -570,6 +574,7 @@ class StixelGenerator:
     Methods:
         generate_stixel: Generates stixels from laser points.
     """
+
     def __init__(self,
                  camera_info: CameraInfo,
                  img_size: Dict[str, int],
@@ -587,7 +592,7 @@ class StixelGenerator:
         self.angle_param = angle_param
 
     def generate_stixel(self, laser_points: np.array) -> List[Stixel]:
-        assert self.plane_model is not None, "No plane model provided."
+        # assert self.plane_model is not None, "No plane model provided."
         # laser_points_by_angle = group_points_by_angle(points=laser_points, param=self.angle_param, camera_info=self.camera_info)
         angle_dict = {}
         for pt in laser_points:

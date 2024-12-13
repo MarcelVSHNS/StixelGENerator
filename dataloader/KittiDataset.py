@@ -57,7 +57,7 @@ class KittiData(BaseData):
         points_in_camera = np.delete(points_in_camera, np.where(outlier), axis=1).T
         velo = np.delete(velo, np.where(outlier), axis=1).T
 
-        projection_list = np.array(points_in_camera[:, 0:2].astype(int))
+        projection_list = np.array(points_in_camera[:, 0:3].astype(int))
         pts_coordinates = np.array(velo[:, 0:3])
         sem_seg = np.zeros(len(pts_coordinates))[:, np.newaxis]
         combined_data = np.hstack((pts_coordinates, projection_list, sem_seg))

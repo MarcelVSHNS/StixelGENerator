@@ -144,10 +144,10 @@ def _export_single_dataset(stixels: List[Stixel], frame: Data, dataset_name: str
         image_right: The right stereo image (optional, only required for testing phase).
     """
     # define paths
-    base_path = os.path.join(config['data_path'], dataset_name, export_phase)
+    base_path = os.path.join(config['data_path'], dataset_name, f"Stixel_{config['generator']}")
     os.makedirs(base_path, exist_ok=True)
     # left_img_path: str = os.path.join(base_path, "FRONT")
-    label_path = os.path.join(base_path, f"Stixel_{config['generator']}")
+    label_path = os.path.join(base_path, export_phase)
     # os.makedirs(left_img_path, exist_ok=True)
     os.makedirs(label_path, exist_ok=True)
     stxl_wrld = stx.StixelWorld()

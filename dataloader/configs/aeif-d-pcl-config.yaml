@@ -1,0 +1,21 @@
+rm_gnd:
+  z_max: 0.63
+  distance_threshold: 0.24
+  ransac_n: 3
+  num_iterations: 10000
+rm_los:
+  disable: True
+  radius: 30000000
+  x: 0.0
+  y: 0.0
+  z: 0.0
+rm_far_pts:
+  range_threshold: 75.0
+group_angle:
+  total_num_angles: 1024
+stixel_cluster:
+  min_samples: 2
+  cluster_eps: 100
+semantic_filter:
+  classes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16]  # 15: vegetation, 14: building
+

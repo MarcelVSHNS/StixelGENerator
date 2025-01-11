@@ -13,8 +13,8 @@ if config['dataset'] == "waymo":
     from dataloader import WaymoDataLoader as Dataset, WaymoData as Data
 elif config['dataset'] == "kitti":
     from dataloader import KittiDataLoader as Dataset, KittiData as Data
-elif config['dataset'] == "kitti-360":
-    from dataloader import Kitti360DataLoader as Dataset, Kitti360Data as Data
+elif config['dataset'] == "aeif":
+    from dataloader import AeifDataLoader as Dataset, AeifData as Data
 else:
     raise ValueError("Dataset not supported")
 
@@ -25,7 +25,7 @@ def main():
                                phase=config['phase'],
                                first_only=True)
     if config['exploring']['idx'] is not None:
-        assert config["exploring"]["idx"] <= len(dataset)
+        assert config["exploring"]["idx"] < len(dataset)
         idx = config['exploring']['idx']
     else:
         idx = random.randint(0, len(dataset) - 1)
@@ -41,13 +41,12 @@ def main():
      unique explained). It is necessary to calculate the correct bottom point of a finished Stixel. 
      coloring_sem=waymo_laser_label_color """
     # new_pts = sample.projection_test()
-    # points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
-    # points_on_img.show()
+    points_on_img = draw_points_on_image(np.array(sample.image), sample.points)
+    points_on_img.show()
     angled_pts = group_points_by_angle(points=sample.points, param=dataset.config['group_angle'],
                                        camera_info=sample.camera_info)
     angled_img = draw_points_on_image(np.array(sample.image), angled_pts, color_by_angle=True)
     angled_img.show()
-
     alt_non_gnd = segment_ground(angled_pts, show_pts=False)
     points_on_img = draw_points_on_image(np.array(sample.image), alt_non_gnd)
     points_on_img.show()

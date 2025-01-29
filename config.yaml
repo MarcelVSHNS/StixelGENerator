@@ -7,12 +7,12 @@ phases:
   - validation
   - testing
 data_path: /home/marcel/workspace/datasets/
-raw_data_path: /home/marcel/workspace/datasets/raw
+raw_data_path: /home/marcel/workspace/datasets/raw/aeif
 exploring:
-  idx: 1 #165, 377 42, 29
-  frame_num: 0  #0, 1
+  idx: 44 #165, 377 42, 29
+  frame_num: 1  #0, 1
   col: 234
 explore_data_deep: True
-grid_step: 8
+grid_step: 16
 dataset: aeif    # waymo, kitti, kitti-360, aeif
 generator: default   # bbox, semantic, default

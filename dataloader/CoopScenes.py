@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import open3d as o3d
 import os
 import glob
 import yaml
@@ -9,12 +10,35 @@ from matplotlib import patches
 import aeifdataset as ad
 from PIL import Image
 from libraries.Stixel import point_dtype
-from libraries import draw_3d_wireframe_box, draw_2d_box
 from dataloader import BaseData, CameraInfo
+from kiss_icp.preprocess import get_preprocessor
+from kiss_icp.config import KISSConfig
 
 
-class AeifData(BaseData):
-    def __init__(self, aeif_frame, frame_num, view):
+def motion_compensation(points, timestamps, frame, last_frame):
+    tf_last = ad.get_transformation(last_frame.vehicle.info)
+    tf = ad.get_transformation(frame.vehicle.info)
+    last_delta = tf_last.combine_transformation(tf.invert_transformation())
+
+    k_config = KISSConfig()
+    k_config.data.max_range = 200
+    k_config.data.min_range = 0
+    k_config.data.deskew = True
+    k_config.registration.max_num_threads = 0
+    preprocessor = get_preprocessor(k_config)
+
+    lidar_points_compensated = preprocessor.preprocess(points, 1 - timestamps, last_delta.mtx)
+    return lidar_points_compensated
+
+
+def _get_timestamps(points):
+    points_ts = points['t']
+    normalized_points_ts = (points_ts - points_ts.min()) / (points_ts.max() - points_ts.min())
+    return normalized_points_ts
+
+
+class CoopSceneData(BaseData):
+    def __init__(self, aeif_frame, record_name, view, last_frame=None):
         """
         Base class for raw from waymo open dataset
         Args:
@@ -23,7 +47,7 @@ class AeifData(BaseData):
         """
         super().__init__()
         # self.camera_labels: open_dataset.CameraLabels = sorted(tf_frame.projected_lidar_labels, key=lambda i: i.name)[self.cam_idx]
-        self.name: str = f"{aeif_frame.frame_id}_{frame_num}_{view}"
+        self.name: str = f"{record_name}_{aeif_frame.frame_id}_{view}"
         # self.laser_labels: Label = aeif_frame.laser_labels
         self.camera: ad.Camera = getattr(aeif_frame.vehicle.cameras, view)
         self.image: np.array = self.camera.image
@@ -32,18 +56,32 @@ class AeifData(BaseData):
         self.frame: ad.Frame = aeif_frame
         if view == "STEREO_LEFT":
             self.lidar: ad.Lidar = self.frame.vehicle.lidars.TOP
+            """
+            self.points = ad.combine_lidar_points(self.frame.vehicle.lidars.TOP,
+                                                  self.frame.vehicle.lidars.LEFT,
+                                                  self.frame.vehicle.lidars.RIGHT)
+            """
         else:
             self.lidar: ad.Lidar = getattr(self.frame.tower.lidars, view)
         self.points = np.stack((self.lidar['x'], self.lidar['y'], self.lidar['z']), axis=-1)
+        """ """
+        if last_frame is not None:
+            self.points = motion_compensation(points=self.points,
+                                              timestamps=_get_timestamps(self.lidar),
+                                              frame=self.frame,
+                                              last_frame=last_frame)
+
         self.camera_info = CameraInfo(camera_mtx=self.camera.info.camera_mtx,
                                       trans_mtx=self._get_trans_mtx(),
                                       proj_mtx=self.camera.info.projection_mtx,
                                       rect_mtx=np.eye(4))
+
+        self.camera_pose = self.camera.info.extrinsic[:,3][:3].reshape(3, 1)
         # Transformations
         self.points = self._point_slices()  # Apply laser transformation
 
     def _point_slices(self):
-        points_3d = np.array([point.tolist()[:3] for point in self.lidar.points.points])
+        points_3d = self.points # np.array([point.tolist()[:3] for point in self.lidar.points])
         points_3d = points_3d[points_3d[:, 0] <= 0]
         points_3d_homogeneous = np.hstack((points_3d, np.ones((points_3d.shape[0], 1))))
 
@@ -78,7 +116,7 @@ class AeifData(BaseData):
         return lidar_tf.combine_transformation(camera_inverse_tf).mtx
 
 
-class AeifDataLoader:
+class CoopScenesDataLoader:
     def __init__(self, data_dir: str, phase: str, view='STEREO_LEFT', first_only=True):
         """
         Loads a full set of waymo raw in single frames, can be one tf_record file or a folder of  tf_record files.
@@ -94,9 +132,9 @@ class AeifDataLoader:
             first_only: doesn't load the full ~20 frames to return a raw sample if True
         """
         super().__init__()
-        self.name: str = "aeif-d"
+        self.name: str = "coopscenes"
         self.phase: str = phase
-        self.data_dir = os.path.join(data_dir, "aeif", phase)
+        self.data_dir = os.path.join(data_dir, "coopscenes", phase)
         self.first_only: bool = first_only
         self.img_size = {'width': 1920, 'height': 1200}
         with open(f'dataloader/configs/{self.name}-pcl-config.yaml') as yaml_file:
@@ -104,28 +142,31 @@ class AeifDataLoader:
         self.stereo_available: bool = False
         self.view = view
         # find files in folder (data_dir) which fit to pattern endswith-'.tfrecord'
-        self.record_map = sorted(glob.glob(os.path.join(self.data_dir, '*.4mse')))
-        print(f"Found {len(self.record_map)} AEIF-Data files")
+        self.record_map = sorted(glob.glob(os.path.join(self.data_dir, '**', '*.4mse'), recursive=True))
+        print(f"Found {len(self.record_map)} CoopScenes files")
 
     def __getitem__(self, idx):
-        frames = ad.DataRecord(self.record_map[idx])
+        record = ad.DataRecord(self.record_map[idx])
         aeif_data_chunk = []
-        for frame_num, aeif_frame in enumerate(frames):
+        last_frame = None
+        for frame_num, aeif_frame in enumerate(record):
             # start_time = datetime.now()
-            if frame_num % 10 == 0:
+            if frame_num % 5 == 0:
                 if self.view == "VIEW":
                     for i in range(1, 3):
-                        aeif_data_chunk.append(AeifData(aeif_frame=aeif_frame,
-                                                        frame_num=frame_num,
-                                                        view=f"{self.view}_{i}"))
+                        aeif_data_chunk.append(CoopSceneData(aeif_frame=aeif_frame,
+                                                             record_name=record.name,
+                                                             view=f"{self.view}_{i}"))
                 else:
                     # View = STEREO_LEFT
-                    aeif_data_chunk.append(AeifData(aeif_frame=aeif_frame,
-                                                    frame_num=frame_num,
-                                                    view=self.view))
+                    aeif_data_chunk.append(CoopSceneData(aeif_frame=aeif_frame,
+                                                         record_name=record.name,
+                                                         view=self.view,
+                                                         last_frame=last_frame))
                 # self.object_creation_time = datetime.now() - start_time
                 if self.first_only:
                     break
+            last_frame = aeif_frame
         return aeif_data_chunk
 
     def __len__(self):

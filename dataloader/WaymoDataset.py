@@ -17,38 +17,6 @@ from libraries.Stixel import point_dtype
 from dataloader import BaseData, CameraInfo
 
 
-def show_camera_image(camera_image, layout, title="FRONT"):
-    """Display the given camera image."""
-    ax = plt.subplot(*layout)
-    plt.imshow(tf.image.decode_jpeg(camera_image.image))
-    plt.title(title)
-    plt.grid(False)
-    plt.axis('off')
-    return ax
-
-
-def show_projected_lidar_labels(frame, camera_image, ax):
-    """Displays pre-projected 3D laser labels."""
-
-    for projected_labels in frame.projected_lidar_labels:
-        # Ignore camera labels that do not correspond to this camera.
-        if projected_labels.name != camera_image.name:
-            continue
-
-        # Iterate over the individual labels.
-        for label in projected_labels.labels:
-            # Draw the bounding box.
-            rect = patches.Rectangle(
-                xy=(label.box.center_x - 0.5 * label.box.length,
-                    label.box.center_y - 0.5 * label.box.width),
-                width=label.box.length,
-                height=label.box.width,
-                linewidth=1,
-                edgecolor=(0.0, 1.0, 0.0, 1.0),  # green
-                facecolor=(0.0, 1.0, 0.0, 0.1))  # opaque green
-            ax.add_patch(rect)
-
-
 def convert_range_image_to_point_cloud_labels(frame,
                                               range_images,
                                               segmentation_labels,
@@ -85,104 +53,6 @@ def convert_range_image_to_point_cloud_labels(frame,
 
         point_labels.append(sl_points_tensor.numpy())
     return point_labels
-
-
-def project_vehicle_to_image(vehicle_pose, calibration, points):
-    """Projects from vehicle coordinate system to image with global shutter.
-
-    Arguments:
-      vehicle_pose: Vehicle pose transform from vehicle into world coordinate
-        system.
-      calibration: Camera calibration details (including intrinsics/extrinsics).
-      points: Points to project of shape [N, 3] in vehicle coordinate system.
-
-    Returns:
-      Array of shape [N, 3], with the latter dimension composed of (u, v, ok).
-    """
-    # Transform points from vehicle to world coordinate system (can be
-    # vectorized).
-    pose_matrix = np.array(vehicle_pose.transform).reshape(4, 4)
-    world_points = np.zeros_like(points)
-    for i, point in enumerate(points):
-        cx, cy, cz, _ = np.matmul(pose_matrix, [*point, 1])
-        world_points[i] = (cx, cy, cz)
-
-    # Populate camera image metadata. Velocity and latency stats are filled with
-    # zeroes.
-    extrinsic = tf.reshape(
-        tf.constant(list(calibration.extrinsic.transform), dtype=tf.float32),
-        [4, 4])
-    intrinsic = tf.constant(list(calibration.intrinsic), dtype=tf.float32)
-    metadata = tf.constant([
-        calibration.width,
-        calibration.height,
-        open_dataset.CameraCalibration.GLOBAL_SHUTTER,
-    ],
-        dtype=tf.int32)
-    camera_image_metadata = list(vehicle_pose.transform) + [0.0] * 10
-
-    # Perform projection and return projected image coordinates (u, v, ok).
-    return py_camera_model_ops.world_to_image(extrinsic, intrinsic, metadata,
-                                              camera_image_metadata,
-                                              world_points).numpy()
-
-
-def show_projected_camera_synced_boxes(frame, camera_image):
-    # Displays camera_synced_box 3D labels projected onto camera.
-    FILTER_AVAILABLE = any(
-        [label.num_top_lidar_points_in_box > 0 for label in frame.laser_labels])
-
-    if not FILTER_AVAILABLE:
-        print('WARNING: num_top_lidar_points_in_box does not seem to be populated. '
-              'Make sure that you are using an up-to-date release (V1.3.2 or later) '
-              'to enable improved filtering of occluded objects.')
-
-    # Fetch matching camera calibration.
-    calibration = next(cc for cc in frame.context.camera_calibrations
-                       if cc.name == camera_image.name)
-
-    plt.figure(figsize=(25, 20))
-    ax = show_camera_image(camera_image, (1, 1, 1), title=frame.context.name)
-
-    for label in frame.laser_labels:
-        box = label.camera_synced_box
-
-        if not box.ByteSize():
-            continue  # Filter out labels that do not have a camera_synced_box.
-        if (FILTER_AVAILABLE and not label.num_top_lidar_points_in_box) or (
-                not FILTER_AVAILABLE and not label.num_lidar_points_in_box):
-            continue  # Filter out likely occluded objects.
-
-        # Retrieve upright 3D box corners.
-        box_coords = np.array([[
-            box.center_x, box.center_y, box.center_z, box.length, box.width,
-            box.height, box.heading
-        ]])
-        corners = box_utils.get_upright_3d_box_corners(
-            box_coords)[0].numpy()  # [8, 3]
-
-        # Project box corners from vehicle coordinates onto the image.
-        projected_corners = project_vehicle_to_image(frame.pose, calibration,
-                                                     corners)
-        u, v, ok = projected_corners.transpose()
-        ok = ok.astype(bool)
-
-        # Skip object if any corner projection failed. Note that this is very
-        # strict and can lead to exclusion of some partially visible objects.
-        if not all(ok):
-            continue
-        u = u[ok]
-        v = v[ok]
-
-        # Clip box to image bounds.
-        u = np.clip(u, 0, calibration.width)
-        v = np.clip(v, 0, calibration.height)
-
-        if u.max() - u.min() == 0 or v.max() - v.min() == 0:
-            continue
-        draw_3d_wireframe_box(ax, u, v, (1.0, 1.0, 0.0))
-    # plt.savefig(f'images_docs/{frame.context.name}_bbox.jpg')
-    # plt.show()
 
 
 class WaymoData(BaseData):
@@ -260,7 +130,6 @@ class WaymoData(BaseData):
         # self.points = np.array([tuple(row) for row in concatenated_laser_pts], dtype=point_dtype)
         self.projection = self._point_projection(laser_points_view)
         combined_data = np.hstack((laser_points_view, self.projection, laser_labels_view[..., 1:]))
-        # TODO: drop the waymo projection mask and use the projection (enables left and right image)
         width, height = self.image.size
         valid_indices = (
                 (combined_data[:, 3] >= 0) & (combined_data[:, 3] < width) &

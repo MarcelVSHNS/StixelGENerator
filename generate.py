@@ -12,8 +12,6 @@ import pandas as pd
 from typing import List
 from datetime import datetime
 
-from stixel.definition import StixelWorld
-
 from libraries import remove_far_points, remove_ground, StixelGenerator, Stixel, remove_line_of_sight, \
     remove_pts_below_plane_model, filter_points_by_label, filter_points_by_semantic, group_points_by_angle, \
     calculate_plane_from_bbox, segment_ground
@@ -25,6 +23,8 @@ if config['dataset'] == "waymo":
     from dataloader import WaymoDataLoader as Dataset, WaymoData as Data
 elif config['dataset'] == "kitti":
     from dataloader import KittiDataLoader as Dataset, KittiData as Data
+elif config['dataset'] == "aeif":
+    from dataloader import CoopScenesDataLoader as Dataset, CoopSceneData as Data
 else:
     raise ValueError("Dataset not supported")
 overall_start_time = datetime.now()
@@ -36,7 +36,7 @@ def main():
     organised by drive.
     """
     # config['phases']      'validation', 'testing', 'training'
-    for config_phase in ['training', 'validation']:
+    for config_phase in ['validation', 'training']:
         phase = config_phase
         with open(f"failures_{phase}.txt", "w") as file:
             file.write("Record names by phase, which failed to open: \n")
@@ -166,7 +166,7 @@ def _export_single_dataset(stixels: List[Stixel], frame: Data, dataset_name: str
     # save images
     img = np.array(frame.image)
     img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    success, img_encoded = cv2.imencode(".png", img)
+    success, img_encoded = cv2.imencode(".jpg", img)
     stxl_wrld.image = img_encoded.tobytes()
     # if image_right is not None and export_phase == 'testing':
     #     os.makedirs(right_img_path, exist_ok=True)
@@ -179,7 +179,7 @@ def _export_single_dataset(stixels: List[Stixel], frame: Data, dataset_name: str
         stxl.vB = int(stixel.bottom_row)
         stxl.d = round(stixel.depth, 3)
         stxl.label = int(stixel.sem_seg)
-        stxl.width = 8
+        stxl.width = config['grid_step']
         stxl.confidence = 1.0
         stxl_wrld.stixel.append(stxl)
     stx.save(stxl_wrld, label_path)
@@ -198,16 +198,16 @@ def _chunks(lst, n) -> List[List[int]]:
         yield lst[i:i + n]
 
 
-def default_generator(frame, dataloader, remove_los: bool = False) -> np.array:
+def default_generator(frame, dataloader) -> np.array:
     angled_pts = group_points_by_angle(points=frame.points, param=dataloader.config['group_angle'],
                                        camera_info=frame.camera_info)
     lp_without_ground = segment_ground(angled_pts)
     lidar_pts = remove_far_points(lp_without_ground,
                                   dataloader.config['rm_far_pts'])
-    if remove_los:
-        lidar_pts = remove_line_of_sight(lidar_pts, frame.camera_info.extrinsic.xyz,
-                                         dataloader.config['rm_los'])
-    return lidar_pts
+    lidar_pts_los = remove_line_of_sight(lidar_pts,
+                                     frame.camera_pose,
+                                     dataloader.config['rm_los'])
+    return lidar_pts_los
 
 
 def bbox_generator(frame, dataloader):

@@ -4,15 +4,15 @@ rm_gnd:
   ransac_n: 3
   num_iterations: 10000
 rm_los:
-  disable: True
-  radius: 30000000
+  disable: False
+  radius: 300000
   x: 0.0
   y: 0.0
   z: 0.0
 rm_far_pts:
-  range_threshold: 75.0
+  range_threshold: 75
 group_angle:
-  total_num_angles: 1024
+  total_num_angles: 1080
 stixel_cluster:
   min_samples: 2
   cluster_eps: 100

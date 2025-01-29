@@ -8,7 +8,7 @@ University of Esslingen, UCA Sigma Clermont\
 ## StixelGENerator
 ![Sample Stixel World by LiDAR](/docs/imgs/sample_stixel_world.png)
 This repo provides the basic toolset to generate a Stixel World from LiDAR. It is used as Ground Truth for 
-the [StixelNExT](https://github.com/MarcelVSHNS/StixelNExT) 2D estimator as well as for the 3D approach: [StixelNExT Pro](https://github.com/MarcelVSHNS/StixelNExT_Pro).
+the [StixelNExT](https://github.com/MarcelVSHNS/StixelNExT) 2D estimator as well as for the 3D approach: [StixelNExT++](https://github.com/MarcelVSHNS/StixelNExT_Pro).
 
 ### Usage with Waymo or KITTI
 1. Clone the repo to your local machine
@@ -21,14 +21,13 @@ from dataloader import WaymoDataLoader as Dataset   # or KittiDataLoader
 After that you can test the functionalities with `utility/explore.py` or run `/generate.py` to generate Stixel Worlds.
 
 #### Output
-The output is simply the image and a `.csv` with the following header:
-> 'img', 'u', 'vT', 'vB', 'd'
-
-what can be easily read by Pandas with `pd.read_csv("target.csv")`.
+The output is a `.stx1` file which is a Protobuf for Stixel Worlds. It includes the Stixel as well as the image and is 
+ready to serve as input data for StixelNExT++. The corresponding library can be installed with `pip install pyStixel-lib`
+and is public available [here](https://github.com/MarcelVSHNS/pyStixel-lib).
 
 #### KITTI Training Data
 We also provide an already generated dataset, based on the public available KITTI dataset. It can be downloaded
-[here](https://bwsyncandshare.kit.edu/s/FL4BDGe7FM2NjJK) (??? GB)
+[here](https://drive.google.com/drive/folders/1ft99z9F4053zDzyIDn2DZ_8qh5if-QvW?usp=sharing) (35.48 GB)
 
 ### Adaption to other Datasets
 The repo is designed to work with adaptive dataloader, which can be handled by the import commands. 
